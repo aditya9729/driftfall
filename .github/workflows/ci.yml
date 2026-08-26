@@ -1,0 +1,135 @@
+# Copyright 2026 Aditya Gudal
+# SPDX-License-Identifier: Apache-2.0
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The gate. No graphics dependencies, so it configures and runs the whole
+  # simulation test suite in well under a minute. Everything else is allowed
+  # to be slower.
+  simulation:
+    name: Simulation (${{ matrix.os }}, ${{ matrix.compiler }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            compiler: gcc
+            cc: gcc-13
+            cxx: g++-13
+          - os: ubuntu-latest
+            compiler: clang
+            cc: clang-18
+            cxx: clang++-18
+          - os: macos-latest
+            compiler: appleclang
+            cc: clang
+            cxx: clang++
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v5
+
+      - name: Configure
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DDRIFTFALL_BUILD_CLIENT=OFF
+          -DDRIFTFALL_BUILD_TESTS=ON
+          -DDRIFTFALL_WERROR=ON
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  # Undefined behaviour in a voxel mesher is silent until it is a crash on
+  # someone's phone. Catch it here instead.
+  sanitizers:
+    name: Sanitizers (asan + ubsan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: seanmiddleditch/gha-setup-ninja@v5
+      - name: Configure
+        env:
+          CC: clang-18
+          CXX: clang++-18
+        run: >
+          cmake -S . -B build-san -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DDRIFTFALL_BUILD_CLIENT=OFF
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+      - run: cmake --build build-san
+      - name: Test
+        env:
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --test-dir build-san --output-on-failure
+
+  format:
+    name: clang-format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check formatting
+        run: |
+          find src tests -name '*.cpp' -o -name '*.hpp' \
+            | xargs clang-format-18 --dry-run --Werror
+
+  # The shipping target. Allowed to fail the build without blocking the
+  # simulation gate while the graphics layer is still being brought up.
+  web:
+    name: Web (WebAssembly)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: seanmiddleditch/gha-setup-ninja@v5
+
+      - name: Install system dependencies for host shaderc
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libx11-dev
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.64
+          actions-cache-folder: emsdk-cache
+
+      - name: Configure
+        run: >
+          emcmake cmake -S . -B build-web -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DDRIFTFALL_BUILD_CLIENT=ON
+          -DDRIFTFALL_BUILD_TESTS=OFF
+
+      - name: Build
+        run: cmake --build build-web
+
+      - name: Collect artifact
+        run: |
+          mkdir -p dist
+          cp build-web/index.html build-web/index.js build-web/index.wasm dist/ 2>/dev/null || true
+          cp -r build-web/*.worker.js dist/ 2>/dev/null || true
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: driftfall-web
+          path: dist
+          if-no-files-found: warn

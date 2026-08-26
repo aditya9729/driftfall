@@ -1,0 +1,33 @@
+DRIFTFALL
+Copyright 2026 Aditya Gudal
+
+This product includes software developed as part of the DRIFTFALL project,
+licensed under the Apache License, Version 2.0.
+
+--------------------------------------------------------------------------
+Third-party dependencies
+--------------------------------------------------------------------------
+
+DRIFTFALL links against the following third-party libraries. Each is fetched
+at configure time by CMake and retains its own license. All are permissive
+and compatible with redistribution under the Apache License 2.0.
+
+  SDL3            https://github.com/libsdl-org/SDL          zlib
+  bgfx / bx / bimg https://github.com/bkaradzic/bgfx         BSD-2-Clause
+  EnTT            https://github.com/skypjack/entt           MIT
+  GLM             https://github.com/g-truc/glm              MIT
+  doctest         https://github.com/doctest/doctest         MIT
+
+Planned (not yet vendored):
+
+  Jolt Physics    https://github.com/jrouwe/JoltPhysics      MIT
+  miniaudio       https://github.com/mackron/miniaudio       MIT-0 / public domain
+  Dear ImGui      https://github.com/ocornut/imgui           MIT
+
+--------------------------------------------------------------------------
+Assets
+--------------------------------------------------------------------------
+
+Source code in this repository is licensed under Apache-2.0 (see LICENSE).
+Art, audio, and other non-code assets under assets/ are licensed separately;
+see assets/LICENSE for terms.

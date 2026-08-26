@@ -1,0 +1,180 @@
+<!-- Copyright 2026 Aditya Gudal. SPDX-License-Identifier: Apache-2.0 -->
+
+# DRIFTFALL — Technical Architecture
+
+## The one structural rule
+
+```
+   ┌───────────────────────────────┐    ┌──────────────────────────┐
+   │  SIMULATION (headless)        │    │  CLIENT (graphics)       │
+   │                               │    │                          │
+   │  core/   math, clock, jobs    │◀───│  render/   bgfx, camera  │
+   │  voxel/  chunks, meshing      │    │  platform/ SDL3, input   │
+   │  game/   waves, weapons, econ │    │  shaders/  .sc → headers │
+   │                               │    │                          │
+   │  builds and tests anywhere    │    │  needs SDL3 + bgfx       │
+   └───────────────────────────────┘    └──────────────────────────┘
+              depends on nothing              depends on simulation
+```
+
+The simulation half never includes a graphics header. That is not tidiness —
+it is what makes the entire game loop unit-testable, lets CI's gating job run
+in seconds on a headless runner, and keeps a future headless replay/balance
+tool possible for free.
+
+## Dependencies
+
+| Library | License | Why this one |
+|---|---|---|
+| [SDL3](https://github.com/libsdl-org/SDL) | zlib | One window/input/audio API that already has working iOS and Emscripten backends |
+| [bgfx](https://github.com/bkaradzic/bgfx) | BSD-2 | **One** shader pipeline reaching Metal on iOS and WebGL2/WebGPU in the browser. This is the entire reason the renderer is not hand-written Metal. |
+| [EnTT](https://github.com/skypjack/entt) | MIT | Fast, header-only ECS; the de-facto standard |
+| [GLM](https://github.com/g-truc/glm) | MIT | Header-only math, GLSL-shaped |
+| [doctest](https://github.com/doctest/doctest) | MIT | Fastest-compiling C++ test framework |
+
+Everything is fetched by CMake and pinned to a tag. A floating dependency is a
+build that breaks on someone else's machine.
+
+## Voxel storage
+
+### Chunks are 32³ with a uniform fast path
+
+`Chunk` has two states:
+
+- **Uniform** — every voxel is the same material. Stores one `Voxel`, allocates
+  nothing. In a derelict station, the overwhelming majority of chunks are
+  uniform vacuum.
+- **Dense** — a `std::array<Voxel, 32768>`, materialised lazily the first time
+  something writes a *differing* value.
+
+Damage is stored sparsely (`unordered_map<u16, u8>`) for the same reason: at
+any moment a handful of voxels are mid-destruction, not thirty thousand.
+
+Together these keep a 224 × 64 × 224 sector well inside a phone's budget. The
+test suite asserts it stays under 64 MB.
+
+### Why sectors are bounded
+
+The single most important scoping decision in the project. An infinite world
+means chunk streaming, LOD, floating-origin rebasing for float precision, and a
+save format that grows without limit — four systems, each of which can eat a
+month.
+
+A station sector is ~224 × 64 × 224 voxels. It fits in memory whole, serialises
+in one shot, and is exactly as much space as a ten-minute horde run needs.
+
+## Greedy meshing
+
+`greedy_mesh()` implements Lysenko's algorithm with material and damage folded
+into the merge key. For each of three axes it sweeps N+1 planes, builds a mask
+of visible faces, and merges that mask into the fewest possible rectangles.
+
+Two details that are easy to get wrong and expensive to debug:
+
+**Sampling crosses chunk seams.** The mesher queries the `VoxelWorld`, not the
+`Chunk`, so a face hidden behind a neighbouring chunk's voxel is never emitted.
+
+**A face belongs to the voxel it grows out of.** On the two planes straddling a
+chunk boundary, one side's owner lives in the *neighbouring* chunk — and that
+neighbour emits the face itself. Without the ownership check, every seam in the
+world is drawn twice, which ships as z-fighting shimmer along every chunk edge.
+There is a dedicated regression test for exactly this.
+
+Measured compression on a generated sector is well over 2× faces-to-quads, and
+a test fails the build if it ever regresses below that.
+
+### The 8-byte vertex
+
+```
+struct PackedVertex {          // 8 bytes
+    u8 x, y, z;                // chunk-local, 0..32
+    u8 normal_ao;              // normal index (3 bits) | AO level (2 bits)
+    u8 material;
+    u8 damage;                 // 0..255, drives the crack/glow overlay
+    u8 pad0, pad1;
+};
+```
+
+The naive layout — `float3` position + `float3` normal + `float2` uv — is 32
+bytes. At tens of thousands of vertices per visible chunk across dozens of
+chunks, that difference *is* the vertex-fetch bandwidth budget of a mobile GPU.
+The vertex shader unpacks and offsets by the chunk origin.
+
+Ambient occlusion is deliberately flat in the mesh. Per-vertex AO must be part
+of the merge key or quads with differing corner occlusion merge and the shading
+tears — and folding it in roughly triples the quad count. AO belongs in a
+screen-space pass instead.
+
+## Frame pacing
+
+### Fixed timestep
+
+The simulation runs at a fixed 60 Hz regardless of display rate. Phones hand us
+wildly variable frame times — 120 Hz ProMotion one second, 22 Hz mid-throttle
+the next — and a variable-`dt` simulation makes gunplay, recoil, and the
+active-reload window feel different on every device. Unacceptable for a
+shooter.
+
+`FixedTimestep` caps at 5 steps per frame and then **discards the backlog**
+rather than carrying it. Carrying it means the next frame inherits the debt and
+the game runs in slow motion; this is the classic spiral of death.
+
+### Remeshing is paced, not immediate
+
+The renderer's real job is not drawing — it is pacing remeshing. One shotgun
+blast can dirty four chunks at once, and rebuilding all of them in the frame
+they were dirtied is a guaranteed hitch.
+
+So: dirty chunks queue, at most `kRemeshBudgetPerFrame` (4) are rebuilt per
+frame, and duplicate queue entries collapse. The world is briefly one frame
+stale instead of briefly at 20 fps.
+
+### The job system leaves cores idle on purpose
+
+`JobSystem` clamps to `min(hardware_concurrency - 2, 3)` workers. Saturating
+every core on a phone is how you get thermal throttling at minute twelve, which
+costs far more frame time over a session than the extra worker ever bought.
+
+On Emscripten without `-pthread` it degrades to synchronous execution, so
+calling code never needs a separate path.
+
+## Web build
+
+- **No Asyncify.** It costs 30–50 % throughput. The main loop is driven by
+  `emscripten_set_main_loop` with `fps = 0`, which uses `requestAnimationFrame`
+  — the only way to match the display and not burn battery.
+- **`-sFILESYSTEM=0`.** Shaders are compiled into C headers at build time and
+  embedded via `BGFX_EMBEDDED_SHADER`, so there is no asset-loading path to
+  build for the web at all.
+- **Threads need COOP/COEP headers**, which **GitHub Pages cannot set**. Host
+  on Cloudflare Pages or Netlify.
+- The canvas backing store is sized in *device* pixels, capped at DPR 2. Above
+  that you are paying 3× the fragment cost for a difference nobody can see on a
+  6-inch screen.
+
+## Testing
+
+67 tests, ~59 k assertions, all headless. Three things they are specifically
+there to protect:
+
+1. **The mesher's face accounting.** Every test asserts
+   `mesh.faces == count_naive_faces(...)`. This is what caught the seam
+   duplication bug.
+2. **Gunfeel.** The active-reload state machine is pure logic and fully
+   testable. Gunfeel is too important to be verifiable only by playing.
+3. **The difficulty curve.** Budget monotonicity, roster caps, unlock
+   scheduling, and determinism are all asserted, so a balance change that
+   breaks the curve fails CI rather than shipping.
+
+CI additionally runs the whole suite under ASan + UBSan. Undefined behaviour in
+a voxel mesher is silent until it is a crash on someone's phone.
+
+## Open questions
+
+- **WebGPU vs WebGL2.** bgfx supports both. WebGL2 is the safe floor today;
+  measure WebGPU on the target devices before switching.
+- **Physics.** Jolt is the intended choice for M2 (character controller,
+  projectiles). Voxels get a simplified collision proxy, never per-voxel bodies.
+- **Audio.** miniaudio at M5. Nothing about the architecture depends on it yet.
+- **Save format.** Sectors are bounded, so a whole-sector snapshot is viable.
+  Prefer replaying the seed + input stream if determinism holds up.

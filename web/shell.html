@@ -1,0 +1,101 @@
+<!doctype html>
+<!-- Copyright 2026 Aditya Gudal. SPDX-License-Identifier: Apache-2.0 -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#090b10">
+<title>DRIFTFALL</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: #090b10; color: #c9d4e3;
+    font: 500 14px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    /* A horde shooter cannot tolerate the browser stealing a swipe for
+       scroll, pull-to-refresh, or text selection. */
+    overscroll-behavior: none;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #canvas {
+    display: block;
+    width: 100vw; height: 100vh;
+    outline: none;
+    /* Fill the notch area on iPhone rather than letterboxing into it. */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+             env(safe-area-inset-bottom) env(safe-area-inset-left);
+    box-sizing: border-box;
+  }
+  #boot {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 18px; background: #090b10; z-index: 10;
+    transition: opacity .4s ease;
+  }
+  #boot h1 {
+    margin: 0; font-size: 34px; letter-spacing: .42em;
+    font-weight: 700; color: #e8eef7; text-indent: .42em;
+  }
+  #boot p { margin: 0; opacity: .55; font-size: 12px; letter-spacing: .18em; }
+  #bar { width: 220px; height: 2px; background: #1b2130; overflow: hidden; }
+  #bar span { display: block; height: 100%; width: 0; background: #d8632b; transition: width .2s ease; }
+  #boot.done { opacity: 0; pointer-events: none; }
+  #error { color: #ff8a63; max-width: 32em; text-align: center; padding: 0 24px; }
+</style>
+</head>
+<body>
+<canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+
+<div id="boot">
+  <h1>DRIFTFALL</h1>
+  <p id="status">BOOTING</p>
+  <div id="bar"><span id="fill"></span></div>
+  <div id="error"></div>
+</div>
+
+<script>
+  var canvas = document.getElementById('canvas');
+  var boot = document.getElementById('boot');
+  var status = document.getElementById('status');
+  var fill = document.getElementById('fill');
+
+  // The canvas backing store must be sized in device pixels, or the whole
+  // frame is upscaled from CSS pixels and everything looks soft on a phone.
+  function resize() {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(canvas.clientWidth * dpr);
+    canvas.height = Math.floor(canvas.clientHeight * dpr);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  var Module = {
+    canvas: canvas,
+    setStatus: function (text) {
+      if (!text) {
+        status.textContent = 'READY';
+        fill.style.width = '100%';
+        setTimeout(function () { boot.classList.add('done'); }, 260);
+        return;
+      }
+      status.textContent = text.toUpperCase();
+      var m = /([0-9.]+)\/([0-9.]+)/.exec(text);
+      if (m) fill.style.width = (parseFloat(m[1]) / parseFloat(m[2]) * 100) + '%';
+    },
+    printErr: function (text) {
+      console.error(text);
+    },
+    onAbort: function (what) {
+      document.getElementById('error').textContent =
+        'Failed to start: ' + what + '. This build needs WebGL 2 — try a current Chrome, Safari or Firefox.';
+    }
+  };
+  window.Module = Module;
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>
