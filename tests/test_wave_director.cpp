@@ -122,7 +122,7 @@ TEST_CASE("late waves get harder through elites, not through more bodies") {
     WaveDirector director(13);
 
     // Early waves are well under the cap, so no elite scaling is needed.
-    CHECK(director.spec_for(3).elite_multiplier == doctest::Approx(1.0f));
+    CHECK(static_cast<f64>(director.spec_for(3).elite_multiplier) == doctest::Approx(1.0));
 
     // Deep waves saturate the cap and must escalate by power instead.
     const WaveSpec deep = director.spec_for(50);

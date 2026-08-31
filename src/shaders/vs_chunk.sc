@@ -22,9 +22,11 @@ void main()
 	v_wpos = worldPos;
 
 	// Unpack the normal index and AO level out of the single packed byte.
-	float packed = a_position.w;
-	float normalIndex = floor(packed * 0.25);
-	float ao = packed - normalIndex * 4.0;
+	// Not named `packed`: that is a reserved word in GLSL and shaderc rejects
+	// it outright.
+	float normalAo = a_position.w;
+	float normalIndex = floor(normalAo * 0.25);
+	float ao = normalAo - normalIndex * 4.0;
 
 	float axis = floor(normalIndex * 0.5);
 	float facing = ((normalIndex - axis * 2.0) < 0.5) ? 1.0 : -1.0;
