@@ -19,14 +19,17 @@ void Input::begin_frame(f32 dt) {
     state_.look = vec2{0.0f};
     state_.reload_pressed = false;
     state_.build_pressed = false;
+    state_.hud_toggle_pressed = false;
 
     if (move_finger_.active) move_finger_.held_seconds += dt;
     if (look_finger_.active) look_finger_.held_seconds += dt;
+    if (aux_finger_.active) aux_finger_.held_seconds += dt;
 }
 
 Input::Finger* Input::find(SDL_FingerID id) {
     if (move_finger_.active && move_finger_.id == id) return &move_finger_;
     if (look_finger_.active && look_finger_.id == id) return &look_finger_;
+    if (aux_finger_.active && aux_finger_.id == id) return &aux_finger_;
     return nullptr;
 }
 
@@ -43,11 +46,26 @@ bool Input::handle_event(const SDL_Event& event) {
                              event.tfinger.y * static_cast<f32>(height_)};
             const bool left_half = point.x < static_cast<f32>(width_) * 0.5f;
 
-            Finger& slot = left_half ? move_finger_ : look_finger_;
-            if (slot.active) return true;  // one finger per half
+            // One stick finger per half; a second finger on the move half
+            // becomes the aux slot rather than being dropped on the floor.
+            Finger* slot = nullptr;
+            FingerRole role = FingerRole::Look;
+            if (left_half) {
+                if (!move_finger_.active) {
+                    slot = &move_finger_;
+                    role = FingerRole::Move;
+                } else if (!aux_finger_.active) {
+                    slot = &aux_finger_;
+                    role = FingerRole::Aux;
+                }
+            } else if (!look_finger_.active) {
+                slot = &look_finger_;
+            }
 
-            slot = Finger{event.tfinger.fingerID, point, point, 0.0f, true, left_half};
-            if (!left_half) state_.firing = false;
+            if (slot == nullptr) return true;
+
+            *slot = Finger{event.tfinger.fingerID, point, point, 0.0f, true, role};
+            if (role == FingerRole::Look) state_.firing = false;
             return true;
         }
 
@@ -58,7 +76,7 @@ bool Input::handle_event(const SDL_Event& event) {
             const vec2 point{event.tfinger.x * static_cast<f32>(width_),
                              event.tfinger.y * static_cast<f32>(height_)};
 
-            if (finger->is_move_stick) {
+            if (finger->role == FingerRole::Move) {
                 const vec2 offset = point - finger->origin;
                 const f32 length = std::sqrt(offset.x * offset.x + offset.y * offset.y);
                 if (length > 0.0001f) {
@@ -66,12 +84,14 @@ bool Input::handle_event(const SDL_Event& event) {
                     // Screen y grows downward; forward is up the screen.
                     state_.move = vec2{offset.x / length, -offset.y / length} * magnitude;
                 }
-            } else {
+            } else if (finger->role == FingerRole::Look) {
                 const vec2 delta = point - finger->current;
                 state_.look += vec2{delta.x, -delta.y} * kLookSensitivity;
                 // Once you drag, it is a look, not a tap.
                 state_.firing = true;
             }
+            // Aux drives nothing while it is down; only the tap on release
+            // means anything, and that needs the travel distance below.
 
             finger->current = point;
             return true;
@@ -81,18 +101,27 @@ bool Input::handle_event(const SDL_Event& event) {
             Finger* finger = find(event.tfinger.fingerID);
             if (finger == nullptr) return false;
 
-            if (finger->is_move_stick) {
-                state_.move = vec2{0.0f};
-            } else {
-                const vec2 travel = finger->current - finger->origin;
-                const f32 distance = std::sqrt(travel.x * travel.x + travel.y * travel.y);
-                if (distance < kTapMaxPixels && finger->held_seconds < kTapMaxSeconds) {
+            const vec2 travel = finger->current - finger->origin;
+            const f32 distance = std::sqrt(travel.x * travel.x + travel.y * travel.y);
+            const bool tapped = distance < kTapMaxPixels && finger->held_seconds < kTapMaxSeconds;
+
+            switch (finger->role) {
+                case FingerRole::Move:
+                    state_.move = vec2{0.0f};
+                    break;
+                case FingerRole::Look:
                     // A quick tap on the look half is the reload gesture — the
                     // active-reload input has to be reachable without moving
                     // your aiming thumb anywhere.
-                    state_.reload_pressed = true;
-                }
-                state_.firing = false;
+                    if (tapped) state_.reload_pressed = true;
+                    state_.firing = false;
+                    break;
+                case FingerRole::Aux:
+                    // Second finger on the move half: the HUD toggle. Nothing
+                    // in the game competes for this gesture, and a stray one
+                    // costs you an overlay rather than a reload.
+                    if (tapped) state_.hud_toggle_pressed = true;
+                    break;
             }
 
             *finger = Finger{};
@@ -108,6 +137,9 @@ bool Input::handle_event(const SDL_Event& event) {
                     return true;
                 case SDLK_B:
                     state_.build_pressed = true;
+                    return true;
+                case SDLK_F3:
+                    state_.hud_toggle_pressed = true;
                     return true;
                 case SDLK_ESCAPE:
                     state_.quit = true;

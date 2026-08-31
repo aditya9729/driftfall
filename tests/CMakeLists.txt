@@ -4,6 +4,8 @@
 add_executable(df_tests
     main.cpp
     test_clock.cpp
+    test_frame_stats.cpp
+    test_mem_stats.cpp
     test_chunk.cpp
     test_greedy_mesher.cpp
     test_weapon.cpp

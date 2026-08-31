@@ -32,6 +32,8 @@ add_library(df_core STATIC
     src/core/log.cpp
     src/core/clock.cpp
     src/core/job_system.cpp
+    src/core/frame_stats.cpp
+    src/core/mem_stats.cpp
 )
 target_include_directories(df_core PUBLIC src)
 target_link_libraries(df_core PUBLIC glm::glm)
@@ -75,6 +77,7 @@ if(DRIFTFALL_BUILD_CLIENT)
         src/render/renderer.cpp
         src/render/camera.cpp
         src/render/chunk_mesh.cpp
+        src/render/debug_hud.cpp
     )
     target_link_libraries(driftfall PRIVATE df_game SDL3::SDL3-static bgfx bx bimg)
     # The compiled shader headers land under ${CMAKE_CURRENT_BINARY_DIR}/generated.

@@ -14,8 +14,9 @@ struct InputState {
     vec2 move{0.0f};  ///< normalised, -1..1 per axis
     vec2 look{0.0f};  ///< delta this frame, radians
     bool firing = false;
-    bool reload_pressed = false;  ///< edge, not held
-    bool build_pressed = false;   ///< edge
+    bool reload_pressed = false;      ///< edge, not held
+    bool build_pressed = false;       ///< edge
+    bool hud_toggle_pressed = false;  ///< edge
     bool quit = false;
 };
 
@@ -50,13 +51,19 @@ public:
     static constexpr f32 kStickRadiusPixels = 90.0f;
 
 private:
+    /// What a finger is driving. A *second* finger on the move half is the Aux
+    /// role: no gameplay input reads it, which is exactly what makes it a safe
+    /// gesture to hang the debug HUD toggle on. Before this it was swallowed
+    /// and discarded.
+    enum class FingerRole { Move, Look, Aux };
+
     struct Finger {
         SDL_FingerID id = 0;
         vec2 origin{0.0f};
         vec2 current{0.0f};
         f32 held_seconds = 0.0f;
         bool active = false;
-        bool is_move_stick = false;
+        FingerRole role = FingerRole::Move;
     };
 
     [[nodiscard]] Finger* find(SDL_FingerID id);
@@ -64,6 +71,7 @@ private:
     InputState state_;
     Finger move_finger_;
     Finger look_finger_;
+    Finger aux_finger_;
     i32 width_ = 1280;
     i32 height_ = 720;
     bool mouse_captured_ = false;

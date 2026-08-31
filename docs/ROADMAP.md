@@ -26,13 +26,20 @@ Repo, Apache-2.0, CI, the headless simulation core.
 ## M1 — It renders
 
 - [ ] Verify the web build in a browser end to end
-- [ ] On-screen debug HUD: frame time, chunks drawn, remesh backlog, heap
+- [x] On-screen debug HUD: frame time, chunks drawn, remesh backlog, heap
 - [ ] Touch camera and movement validated on a real phone
 - [ ] Skybox / starfield so the sector reads as being in space
 - [ ] Screen-space AO pass
 
 **Proof:** You can fly through a generated sector on your phone at a locked
 60 fps, and the HUD proves it.
+
+> **Where this actually stands.** The client now compiles and links, and the
+> shaders build for GLSL, ESSL and SPIR-V. None of that was true before: the
+> shader step could not run at all, so no part of the client had ever been
+> built by anything. The HUD's arithmetic is covered by unit tests, but no
+> frame of this game has yet been drawn on a screen — that is precisely what
+> the first and third boxes above are for, and neither is a code task.
 
 ---
 

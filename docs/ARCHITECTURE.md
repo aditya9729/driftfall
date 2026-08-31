@@ -129,6 +129,26 @@ So: dirty chunks queue, at most `kRemeshBudgetPerFrame` (4) are rebuilt per
 frame, and duplicate queue entries collapse. The world is briefly one frame
 stale instead of briefly at 20 fps.
 
+### Measuring the pacing
+
+`FrameStats` (in `core/`, so it is testable) keeps a four-second window of
+frame times and reports the mean, a nearest-rank percentile, and a high-water
+mark. The percentile is the point of it: a window alternating 8 ms and 25 ms
+averages to a comfortable 16.5 ms while feeling terrible, so an average alone
+would have said everything was fine.
+
+Two things are deliberately kept apart, because they look identical from the
+outside and mean opposite things:
+
+- A **dropped step** is the device failing to keep up, and `FixedTimestep`
+  discarding backlog rather than spiralling.
+- A **stall** is the app not running at all — a backgrounded tab, a suspended
+  app, a breakpoint. Folding one into the window would poison every figure for
+  the next four seconds, so stalls are counted and excluded.
+
+`worst_ms` is not windowed, on purpose. Thermal throttling is a slow drift over
+minutes, and a four-second window forgets it by design.
+
 ### The job system leaves cores idle on purpose
 
 `JobSystem` clamps to `min(hardware_concurrency - 2, 3)` workers. Saturating
@@ -154,7 +174,7 @@ calling code never needs a separate path.
 
 ## Testing
 
-67 tests, ~59 k assertions, all headless. Three things they are specifically
+86 tests, ~59 k assertions, all headless. Four things they are specifically
 there to protect:
 
 1. **The mesher's face accounting.** Every test asserts
@@ -165,6 +185,10 @@ there to protect:
 3. **The difficulty curve.** Budget monotonicity, roster caps, unlock
    scheduling, and determinism are all asserted, so a balance change that
    breaks the curve fails CI rather than shipping.
+4. **The performance instrument itself.** The frame-time window, its
+   percentiles, and the stall/dropped-step distinction are unit-tested, because
+   a HUD that quietly reports the wrong number is worse than no HUD: it is the
+   one number the whole milestone is judged on.
 
 CI additionally runs the whole suite under ASan + UBSan. Undefined behaviour in
 a voxel mesher is silent until it is a crash on someone's phone.

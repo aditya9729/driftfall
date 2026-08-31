@@ -3,10 +3,12 @@
 #pragma once
 
 #include "core/clock.hpp"
+#include "core/frame_stats.hpp"
 #include "core/types.hpp"
 #include "game/sim.hpp"
 #include "platform/input.hpp"
 #include "render/camera.hpp"
+#include "render/debug_hud.hpp"
 #include "render/renderer.hpp"
 
 #include <memory>
@@ -52,6 +54,8 @@ private:
     Camera camera_;
     Input input_;
     FixedTimestep timestep_;
+    FrameStats frame_stats_;
+    DebugHud hud_;
     vec3 player_position_{0.0f};
     f64 last_time_ = 0.0;
     i32 width_ = 0;

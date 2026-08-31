@@ -83,15 +83,21 @@ bool App::initialise(const char* title, i32 width, i32 height) {
 
     if (!set_platform_data(window_)) return false;
 
+    // Calling renderFrame() *before* init() is how bgfx is told to run
+    // single-threaded — it is not a stylistic preference, it is the only
+    // signal bgfx accepts. Without it bgfx spawns its own render thread and
+    // touches the X11 display from two threads without XInitThreads, which
+    // fails outright on Linux. On the web a render thread needs
+    // SharedArrayBuffer, and on a phone it competes with the chunk mesher for
+    // the same handful of cores.
+    bgfx::renderFrame();
+
     bgfx::Init init;
     // Auto lets bgfx pick Metal on Apple platforms and WebGL2 in the browser.
     init.type = bgfx::RendererType::Count;
     init.resolution.width = static_cast<u32>(width);
     init.resolution.height = static_cast<u32>(height);
     init.resolution.reset = BGFX_RESET_VSYNC;
-    // A single-threaded render submission path. bgfx's render thread is a win
-    // on desktop, but on the web it requires SharedArrayBuffer and on a phone
-    // it competes with the chunk mesher for the same limited cores.
     init.callback = nullptr;
 
     if (!bgfx::init(init)) {
@@ -216,12 +222,19 @@ bool App::frame() {
         return false;
     }
 
+    // Toggled here rather than in apply_input, which runs zero to five times a
+    // frame off the same InputState — an edge consumed in that loop would flip
+    // the HUD once per fixed step.
+    if (input_.state().hud_toggle_pressed) hud_.toggle();
+
     const int steps = timestep_.advance(delta);
     const auto step = static_cast<f32>(FixedTimestep::kStep);
     for (int i = 0; i < steps; ++i) {
         apply_input(step);
         sim_->tick(step);
     }
+
+    frame_stats_.push(delta, timestep_.dropped_steps());
 
     if (timestep_.dropped_steps()) {
         log::warn("frame took {:.1f} ms; simulation dropped steps", delta * 1000.0);
@@ -232,6 +245,7 @@ bool App::frame() {
 
     renderer_->collect_dirty(sim_->world());
     renderer_->render(sim_->world(), camera_);
+    hud_.draw(frame_stats_, renderer_->stats(), current, player_position_);
 
     bgfx::frame();
     return true;

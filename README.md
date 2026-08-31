@@ -17,8 +17,10 @@ Metal, from the same source.
 
 > **Status: early.** The simulation layer — voxel storage, greedy meshing,
 > the wave director, active reload, the build economy — is implemented and
-> covered by 67 tests. The graphical client compiles as part of CI and is
-> currently a fly-through of a generated sector. See [the roadmap](docs/ROADMAP.md).
+> covered by 86 tests. The graphical client compiles and links, shaders build
+> for GLSL/ESSL/SPIR-V, and there is a debug HUD that reports frame time
+> against the budget below; it has not yet been run on a device.
+> See [the roadmap](docs/ROADMAP.md).
 
 ---
 
@@ -88,6 +90,7 @@ cmake --build build-web
 | Look | Right half — drag | Mouse |
 | Fire | Right half — hold | Left mouse |
 | Reload / active reload | Right half — tap | `R` |
+| Debug HUD | Left half — tap with a second finger | `F3` |
 | Build mode | (M3) | `B` |
 
 Reload is a tap on the same half of the screen you aim with, on purpose: the

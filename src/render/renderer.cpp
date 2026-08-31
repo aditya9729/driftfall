@@ -3,6 +3,7 @@
 
 #include "render/renderer.hpp"
 
+#include "core/clock.hpp"
 #include "core/log.hpp"
 #include "generated/shaders/fs_chunk.sc.bin.h"
 #include "generated/shaders/vs_chunk.sc.bin.h"
@@ -116,6 +117,7 @@ void Renderer::render(const VoxelWorld& world, const Camera& camera) {
     stats_ = RendererStats{};
 
     // --- pace the remeshing ------------------------------------------------
+    const f64 remesh_started = now_seconds();
     const usize budget = std::min(kRemeshBudgetPerFrame, remesh_queue_.size());
     for (usize i = 0; i < budget; ++i) {
         const ivec3 coord = remesh_queue_[i];
@@ -129,6 +131,7 @@ void Renderer::render(const VoxelWorld& world, const Camera& camera) {
     }
     remesh_queue_.erase(remesh_queue_.begin(), remesh_queue_.begin() + static_cast<i64>(budget));
     stats_.dirty_backlog = remesh_queue_.size();
+    stats_.remesh_ms = (now_seconds() - remesh_started) * 1000.0;
 
     // --- draw --------------------------------------------------------------
     const glm::mat4 view = camera.view();

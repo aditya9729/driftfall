@@ -19,6 +19,12 @@ struct RendererStats {
     u32 draw_calls = 0;
     u32 triangles = 0;
     usize dirty_backlog = 0;
+
+    /// Wall-clock milliseconds spent rebuilding chunk meshes this frame. The
+    /// chunk count alone does not tell you whether the remesh budget was met —
+    /// four trivial chunks and four dense ones are the same count and wildly
+    /// different costs — so the HUD needs the time, not just the tally.
+    f64 remesh_ms = 0.0;
 };
 
 /// Draws the voxel world.
