@@ -4,6 +4,7 @@
 #include "platform/app.hpp"
 
 #include "core/log.hpp"
+#include "voxel/raycast.hpp"
 
 #include <SDL3/SDL.h>
 #include <bgfx/bgfx.h>
@@ -70,6 +71,11 @@ bool fill_platform_data(SDL_Window* window, bgfx::PlatformData& pd) {
 /// Player movement speed in voxels per second. A voxel is ~0.4 m, so this is a
 /// deliberate, heavy jog — the Gears weight, not the Quake sprint.
 constexpr f32 kMoveSpeed = 11.0f;
+
+/// How far a shot reaches, in voxels. Beyond this the ray stops looking, which
+/// bounds the walk and keeps a shot into open space from marching the length of
+/// the sector.
+constexpr f32 kWeaponRange = 96.0f;
 
 const char* phase_name(Phase phase) {
     switch (phase) {
@@ -198,20 +204,22 @@ void App::handle_resize() {
     input_.set_viewport(width, height);
 }
 
-void App::apply_input(f32 dt) {
+void App::apply_frame_input() {
     const InputState& in = input_.state();
 
+    // Look is a *delta* accumulated over the frame, so it is applied once per
+    // frame. Applying it inside the fixed-step loop multiplied look speed by
+    // the number of steps, which made the camera whip round at exactly the
+    // moment the device was struggling to keep up.
     camera_.add_yaw_pitch(in.look.x, in.look.y);
 
-    const vec3 motion = camera_.flat_forward() * in.move.y + camera_.flat_right() * in.move.x;
-    player_position_ += motion * (kMoveSpeed * dt);
+    if (in.hud_toggle_pressed) hud_.toggle();
 
-    // TODO(M2): collide against the voxel world. Until then the player is a
-    // free-flying camera, which is exactly what is needed to inspect meshing.
-    const ivec3 extent = sim_->world().size_in_voxels();
-    player_position_.x = std::clamp(player_position_.x, 1.0f, static_cast<f32>(extent.x) - 1.0f);
-    player_position_.z = std::clamp(player_position_.z, 1.0f, static_cast<f32>(extent.z) - 1.0f);
-
+    // Edges are consumed here for the same reason: the fixed-step loop runs
+    // zero to five times off one InputState, and an edge read inside it fires
+    // once per step. A single reload tap became begin_reload() followed by
+    // tap_reload() at nearly zero elapsed time — an instant jam, and only on
+    // slow frames. Reproduced at 11 fps, absent at 40.
     if (in.reload_pressed) {
         Weapon& weapon = sim_->weapon();
         if (weapon.state() == ReloadState::Ready) {
@@ -232,13 +240,32 @@ void App::apply_input(f32 dt) {
             }
         }
     }
+}
+
+void App::apply_step_input(f32 dt) {
+    const InputState& in = input_.state();
+
+    // Movement and firing are continuous, so these genuinely do belong inside
+    // the fixed step: motion is a velocity, and the weapon's rate of fire is
+    // gated by its own clock, which advances one step at a time.
+    const vec3 motion = camera_.flat_forward() * in.move.y + camera_.flat_right() * in.move.x;
+    player_position_ += motion * (kMoveSpeed * dt);
+
+    // TODO(M2): collide against the voxel world. Until then the player is a
+    // free-flying camera, which is exactly what is needed to inspect meshing.
+    const ivec3 extent = sim_->world().size_in_voxels();
+    player_position_.x = std::clamp(player_position_.x, 1.0f, static_cast<f32>(extent.x) - 1.0f);
+    player_position_.z = std::clamp(player_position_.z, 1.0f, static_cast<f32>(extent.z) - 1.0f);
 
     if (in.firing) {
-        const f32 damage = sim_->weapon().fire();
-        if (damage > 0.0f) {
-            // TODO(M2): raycast the voxel world from the camera and damage the
-            // first solid voxel hit. The sim side of that already exists.
-            (void)damage;
+        Weapon& weapon = sim_->weapon();
+        if (weapon.fire() > 0.0f) {
+            // Aim down the camera's forward axis rather than the player's:
+            // the crosshair sits at the centre of the screen, and in an
+            // over-the-shoulder camera that is not where the player is facing.
+            const VoxelHit hit =
+                raycast_voxels(sim_->world(), camera_.eye(), camera_.forward(), kWeaponRange);
+            if (hit) sim_->shoot_voxel(hit.voxel, weapon.stats().voxel_damage);
         }
     }
 }
@@ -277,15 +304,14 @@ bool App::frame() {
         return false;
     }
 
-    // Toggled here rather than in apply_input, which runs zero to five times a
-    // frame off the same InputState — an edge consumed in that loop would flip
-    // the HUD once per fixed step.
-    if (input_.state().hud_toggle_pressed) hud_.toggle();
+    // Everything that is a per-frame quantity — look delta, input edges —
+    // happens exactly once, here. Everything continuous happens per step.
+    apply_frame_input();
 
     const int steps = timestep_.advance(delta);
     const auto step = static_cast<f32>(FixedTimestep::kStep);
     for (int i = 0; i < steps; ++i) {
-        apply_input(step);
+        apply_step_input(step);
         sim_->tick(step);
     }
 

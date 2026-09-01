@@ -61,7 +61,7 @@ The milestone that decides whether the game is worth finishing.
 
 - [ ] Jolt Physics: character controller, gravity, collision against the voxel
       world via a simplified proxy
-- [ ] Voxel raycast from the camera; the Salvage Rifle damages what it hits
+- [x] Voxel raycast from the camera; the Salvage Rifle damages what it hits
 - [ ] Destruction VFX: chunk debris, impact sparks, damage glow
 - [ ] Active-reload UI — the window bar, on screen, readable at arm's length
 - [ ] One enemy (Skitter): spawn, path, close, damage the player

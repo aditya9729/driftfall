@@ -8,6 +8,7 @@ add_executable(df_tests
     test_mem_stats.cpp
     test_chunk.cpp
     test_greedy_mesher.cpp
+    test_raycast.cpp
     test_weapon.cpp
     test_wave_director.cpp
     test_sim.cpp

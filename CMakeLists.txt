@@ -64,6 +64,7 @@ add_library(df_voxel STATIC
     src/voxel/chunk.cpp
     src/voxel/voxel_world.cpp
     src/voxel/greedy_mesher.cpp
+    src/voxel/raycast.cpp
 )
 target_link_libraries(df_voxel PUBLIC df_core)
 driftfall_set_warnings(df_voxel)

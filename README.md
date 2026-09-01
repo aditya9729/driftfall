@@ -17,7 +17,7 @@ Metal, from the same source.
 
 > **Status: early.** The simulation layer — voxel storage, greedy meshing,
 > the wave director, active reload, the build economy — is implemented and
-> covered by 91 tests. The client renders: you can fly through a generated
+> covered by 101 tests. The client renders: you can fly through a generated
 > sector in a browser or on a desktop, with a debug HUD reporting frame time
 > against the budget below. It has not yet been run on a phone.
 > See [the roadmap](docs/ROADMAP.md).

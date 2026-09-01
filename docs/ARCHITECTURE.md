@@ -252,7 +252,7 @@ calling code never needs a separate path.
 
 ## Testing
 
-91 tests, ~59 k assertions, all headless. Four things they are specifically
+101 tests, ~59 k assertions, all headless. Four things they are specifically
 there to protect:
 
 1. **The mesher's face accounting.** Every test asserts

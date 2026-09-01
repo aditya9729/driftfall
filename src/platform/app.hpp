@@ -44,7 +44,12 @@ public:
 private:
     void pump_events();
 
-    void apply_input(f32 dt);
+    /// Per-frame input: look delta and edge-triggered actions. Runs once a
+    /// frame, never inside the fixed-step loop.
+    void apply_frame_input();
+
+    /// Continuous input: movement and sustained fire, scaled by the step.
+    void apply_step_input(f32 dt);
 
     void handle_resize();
 
