@@ -3,6 +3,7 @@
 
 #include "render/camera.hpp"
 
+#include <bgfx/bgfx.h>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <algorithm>
@@ -55,10 +56,16 @@ glm::mat4 Camera::view() const {
 }
 
 glm::mat4 Camera::projection() const {
-    // bgfx's default clip space is [0,1] depth on every backend it targets
-    // here (Metal, WebGL2 via the ZO flag), so use the ZO variant explicitly
-    // rather than relying on GLM's compile-time default.
-    return glm::perspectiveLH_ZO(fov_y_, aspect_, near_, far_);
+    // Clip-space depth is *not* the same on every backend bgfx targets:
+    // OpenGL and WebGL2 use [-1,1] ("homogeneous depth"), while Metal, Vulkan
+    // and Direct3D use [0,1]. Hardcoding the ZO variant, as this used to,
+    // pushes the entire scene outside the depth range on the GL backends —
+    // and the failure mode is silent, because the geometry is still submitted
+    // and the draw-call count still looks healthy. It just never survives
+    // clipping. Ask bgfx which convention the live backend wants.
+    const bool homogeneous_depth = bgfx::getCaps()->homogeneousDepth;
+    return homogeneous_depth ? glm::perspectiveLH_NO(fov_y_, aspect_, near_, far_)
+                             : glm::perspectiveLH_ZO(fov_y_, aspect_, near_, far_);
 }
 
 }  // namespace df

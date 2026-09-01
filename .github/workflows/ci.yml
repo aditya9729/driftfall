@@ -111,12 +111,21 @@ jobs:
           version: 3.1.64
           actions-cache-folder: emsdk-cache
 
+      # shaderc reads .sc files off the real filesystem, so it has to be a
+      # host-native binary. Built under emcmake it becomes a shaderc.js that
+      # runs in Emscripten's virtual filesystem and cannot open them.
+      - name: Build a host-native shaderc
+        run: |
+          cmake -S . -B build-host -G Ninja -DDRIFTFALL_BUILD_CLIENT=ON -DDRIFTFALL_BUILD_TESTS=OFF
+          cmake --build build-host --target shaderc
+
       - name: Configure
         run: >
           emcmake cmake -S . -B build-web -G Ninja
           -DCMAKE_BUILD_TYPE=Release
           -DDRIFTFALL_BUILD_CLIENT=ON
           -DDRIFTFALL_BUILD_TESTS=OFF
+          -DDRIFTFALL_SHADERC=${{ github.workspace }}/build-host/_deps/bgfx-build/cmake/bgfx/shaderc
 
       - name: Build
         run: cmake --build build-web

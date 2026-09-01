@@ -61,9 +61,29 @@ if(DRIFTFALL_BUILD_CLIENT)
     set(BGFX_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(BGFX_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(BGFX_INSTALL OFF CACHE BOOL "" FORCE)
-    set(BGFX_CONFIG_MULTITHREADED ON CACHE BOOL "" FORCE)
-    # shaderc must be a host-native binary even when cross-compiling to wasm/iOS.
-    set(BGFX_BUILD_TOOLS ON CACHE BOOL "" FORCE)
+    # bx hard-disables threading on Emscripten — BX_CONFIG_SUPPORTS_THREADING
+    # is defined as !BX_PLATFORM_EMSCRIPTEN and no compiler flag changes it —
+    # so a multithreaded bgfx cannot compile for wasm at all: it fails on
+    # "no type named 'Thread' in namespace 'bx'". That is fine, because the
+    # render thread is exactly what we do not want on the web anyway, and
+    # app.cpp already forces single-threaded submission everywhere by calling
+    # bgfx::renderFrame() before bgfx::init().
+    if(EMSCRIPTEN)
+        set(BGFX_CONFIG_MULTITHREADED OFF CACHE BOOL "" FORCE)
+    else()
+        set(BGFX_CONFIG_MULTITHREADED ON CACHE BOOL "" FORCE)
+    endif()
+    # shaderc must be a host-native binary even when cross-compiling to
+    # wasm/iOS: it reads .sc files off the real filesystem, so a shaderc built
+    # for the target runs under node inside Emscripten's virtual filesystem and
+    # fails with "Unable to open file". When DRIFTFALL_SHADERC points at a
+    # host build, do not build bgfx's own tools at all — Shaders.cmake imports
+    # that binary as bgfx::shaderc instead.
+    if(DRIFTFALL_SHADERC)
+        set(BGFX_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+    else()
+        set(BGFX_BUILD_TOOLS ON CACHE BOOL "" FORCE)
+    endif()
     FetchContent_MakeAvailable(bgfx)
 
     include(Shaders)

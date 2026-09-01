@@ -16,9 +16,20 @@ namespace df {
 namespace {
 
 /// Fills in the native handles bgfx needs from an SDL3 window.
-bool set_platform_data(SDL_Window* window) {
-    bgfx::PlatformData pd{};
-
+///
+/// These must end up in bgfx::Init::platformData, not merely in a
+/// setPlatformData() call before init. bgfx decides whether it is running
+/// headless purely by looking at Init::platformData, and a headless device
+/// with a non-zero backbuffer resolution is a hard init failure:
+///
+///     m_headless = ... && NULL == _init.platformData.nwh && ...;
+///     if (m_headless && 0 != _init.resolution.width ...) return false;
+///
+/// It then overwrites the global platform data with Init::platformData
+/// regardless, so a pre-init setPlatformData() is not just insufficient, it is
+/// discarded. This is why every real backend failed while Noop succeeded —
+/// Noop is the one renderer type excluded from that headless test.
+bool fill_platform_data(SDL_Window* window, bgfx::PlatformData& pd) {
 #if defined(__EMSCRIPTEN__)
     (void)window;
     // bgfx addresses the canvas by CSS selector on the web.
@@ -53,7 +64,6 @@ bool set_platform_data(SDL_Window* window) {
     }
 #endif
 
-    bgfx::setPlatformData(pd);
     return true;
 }
 
@@ -81,20 +91,20 @@ bool App::initialise(const char* title, i32 width, i32 height) {
         return false;
     }
 
-    if (!set_platform_data(window_)) return false;
+    bgfx::PlatformData platform_data{};
+    if (!fill_platform_data(window_, platform_data)) return false;
 
     // Calling renderFrame() *before* init() is how bgfx is told to run
-    // single-threaded — it is not a stylistic preference, it is the only
-    // signal bgfx accepts. Without it bgfx spawns its own render thread and
-    // touches the X11 display from two threads without XInitThreads, which
-    // fails outright on Linux. On the web a render thread needs
-    // SharedArrayBuffer, and on a phone it competes with the chunk mesher for
-    // the same handful of cores.
+    // single-threaded — setting init.callback does not do it, which is what
+    // the comment here used to claim. A render thread needs SharedArrayBuffer
+    // on the web, and on a phone it competes with the chunk mesher for the
+    // same handful of cores, so we do not want one.
     bgfx::renderFrame();
 
     bgfx::Init init;
     // Auto lets bgfx pick Metal on Apple platforms and WebGL2 in the browser.
     init.type = bgfx::RendererType::Count;
+    init.platformData = platform_data;
     init.resolution.width = static_cast<u32>(width);
     init.resolution.height = static_cast<u32>(height);
     init.resolution.reset = BGFX_RESET_VSYNC;

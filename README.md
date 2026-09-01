@@ -17,9 +17,9 @@ Metal, from the same source.
 
 > **Status: early.** The simulation layer — voxel storage, greedy meshing,
 > the wave director, active reload, the build economy — is implemented and
-> covered by 86 tests. The graphical client compiles and links, shaders build
-> for GLSL/ESSL/SPIR-V, and there is a debug HUD that reports frame time
-> against the budget below; it has not yet been run on a device.
+> covered by 86 tests. The client renders: you can fly through a generated
+> sector in a browser or on a desktop, with a debug HUD reporting frame time
+> against the budget below. It has not yet been run on a phone.
 > See [the roadmap](docs/ROADMAP.md).
 
 ---
@@ -71,16 +71,35 @@ The first configure clones and builds SDL3 and bgfx, which takes a while.
 
 ### The client (web)
 
+Two steps, because `shaderc` reads `.sc` files off the real filesystem and so
+has to be built for *this* machine. Built under `emcmake` it becomes a
+`shaderc.js` running in Emscripten's virtual filesystem, where those paths do
+not exist:
+
 ```bash
-emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release -DDRIFTFALL_BUILD_TESTS=OFF
+# 1. a host-native shaderc (only the one target, so this does not build SDL3)
+cmake -S . -B build-host -G Ninja -DDRIFTFALL_BUILD_CLIENT=ON -DDRIFTFALL_BUILD_TESTS=OFF
+cmake --build build-host --target shaderc
+
+# 2. the wasm build, pointed at it
+emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DDRIFTFALL_BUILD_CLIENT=ON -DDRIFTFALL_BUILD_TESTS=OFF \
+  -DDRIFTFALL_SHADERC="$PWD/build-host/_deps/bgfx-build/cmake/bgfx/shaderc"
 cmake --build build-web
+```
+
+Then play it:
+
+```bash
+python3 web/serve.py            # serves build-web on http://localhost:8080
 ```
 
 > **Hosting note.** The web build uses WebAssembly threads, which require
 > `SharedArrayBuffer`, which requires `Cross-Origin-Opener-Policy` and
-> `Cross-Origin-Embedder-Policy` response headers. **GitHub Pages cannot set
-> those headers.** Deploy to Cloudflare Pages, Netlify, or anything else that
-> lets you configure headers.
+> `Cross-Origin-Embedder-Policy` response headers. `web/serve.py` sets them,
+> which is the entire reason it exists rather than `python -m http.server`.
+> **GitHub Pages cannot set those headers.** Deploy to Cloudflare Pages,
+> Netlify, or anything else that lets you configure headers.
 
 ## Controls
 

@@ -10,12 +10,22 @@ namespace df {
 bgfx::VertexLayout GpuChunkMesh::s_layout;
 
 void GpuChunkMesh::init_layout() {
-    // Mirrors PackedVertex exactly. Both attributes are read as unnormalised
-    // floats so the shader sees 0..32 positions and 0..255 material/damage
-    // without any scaling in the layout.
+    // Mirrors PackedVertex exactly. Both attributes are *normalised*, which is
+    // not a stylistic choice. bgfx's GL path does this:
+    //
+    //     if ((OpenGL >= 30 || gles3) && !isFloat(type) && !normalized)
+    //         glVertexAttribIPointer(...);
+    //
+    // so an unnormalised Uint8 attribute is bound as an *integer* attribute on
+    // GLES3 and WebGL2 — exactly the backends this game ships on. The shader
+    // declares a_position as vec4, the types disagree, and every draw is
+    // rejected with GL_INVALID_OPERATION. Nothing is reported by bgfx; the
+    // draw-call count still looks perfectly healthy and the screen stays
+    // empty. Normalising keeps it a float attribute everywhere, at the cost of
+    // one multiply by 255 in the vertex shader.
     s_layout.begin()
-        .add(bgfx::Attrib::Position, 4, bgfx::AttribType::Uint8, false, false)
-        .add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Uint8, false, false)
+        .add(bgfx::Attrib::Position, 4, bgfx::AttribType::Uint8, true, false)
+        .add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Uint8, true, false)
         .end();
     static_assert(sizeof(PackedVertex) == 8, "vertex layout and PackedVertex must agree");
 }

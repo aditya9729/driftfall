@@ -23,6 +23,19 @@ option(DRIFTFALL_WERROR       "Treat compiler warnings as errors" OFF)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(Warnings)
+
+if(EMSCRIPTEN)
+    # -pthread has to be set here, before the dependencies are declared, so it
+    # reaches *every* target including the fetched ones. Emscripten objects
+    # built with and without it are not link-compatible, and the link line
+    # already asks for a pthread pool — previously only the driftfall target
+    # itself got the flag, so SDL3, bgfx and even df_core disagreed with the
+    # link. It is also what lets JobSystem use real workers on the web instead
+    # of silently degrading to synchronous execution.
+    add_compile_options(-pthread)
+    add_link_options(-pthread)
+endif()
+
 include(Dependencies)
 
 # ---------------------------------------------------------------------------
@@ -100,12 +113,16 @@ if(DRIFTFALL_BUILD_CLIENT)
             "-sINITIAL_MEMORY=268435456"
             "-sSTACK_SIZE=4194304"
             "-sEXIT_RUNTIME=0"
-            "-sFILESYSTEM=0"
+            # -sFILESYSTEM=0 is tempting here — the shaders are embedded as C
+            # headers, so *our* code never touches a file on the web. But
+            # SDL3's JS glue still emits FS.mkdir/open/write calls, and with
+            # the filesystem stripped the page boots and then dies on
+            # "FS is not defined" with a black canvas and no other symptom.
             "-sPTHREAD_POOL_SIZE=3"
-            "-pthread"
             "--shell-file=${CMAKE_CURRENT_SOURCE_DIR}/web/shell.html"
         )
-        target_compile_options(driftfall PRIVATE -pthread)
+        # -pthread is applied globally above, before the dependencies, because
+        # it has to reach bx and SDL3 too.
         target_link_options(driftfall PRIVATE ${DRIFTFALL_EM_FLAGS})
         set_target_properties(driftfall PROPERTIES SUFFIX ".html" OUTPUT_NAME "index")
     endif()

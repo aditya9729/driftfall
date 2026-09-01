@@ -17,14 +17,19 @@ uniform vec4 u_materialColor[8];   // indexed by material id
 
 void main()
 {
-	vec3 worldPos = a_position.xyz + u_chunkOrigin.xyz;
+	// The vertex attributes arrive normalised to 0..1 rather than as raw bytes
+	// — see render/chunk_mesh.cpp for why that is forced on us — so scale back
+	// to the byte values the greedy mesher actually wrote.
+	vec3 localPos = a_position.xyz * 255.0;
+
+	vec3 worldPos = localPos + u_chunkOrigin.xyz;
 	gl_Position = mul(u_modelViewProj, vec4(worldPos, 1.0));
 	v_wpos = worldPos;
 
 	// Unpack the normal index and AO level out of the single packed byte.
 	// Not named `packed`: that is a reserved word in GLSL and shaderc rejects
 	// it outright.
-	float normalAo = a_position.w;
+	float normalAo = a_position.w * 255.0;
 	float normalIndex = floor(normalAo * 0.25);
 	float ao = normalAo - normalIndex * 4.0;
 
@@ -37,11 +42,12 @@ void main()
 	else                  { n = vec3(0.0, 0.0, facing); }
 	v_normal = n;
 
-	int materialIndex = int(a_color0.x + 0.5);
+	int materialIndex = int(a_color0.x * 255.0 + 0.5);
 	vec3 base = u_materialColor[materialIndex].rgb;
 
 	// Damage reads as heat: plating glows along the cracks before it fails.
-	float damage = a_color0.y * (1.0 / 255.0);
+	// Already 0..1 straight out of the normalised attribute.
+	float damage = a_color0.y;
 	vec3 tint = mix(base, vec3(1.0, 0.42, 0.12), damage * 0.75);
 
 	float aoTerm = 0.55 + 0.15 * ao;

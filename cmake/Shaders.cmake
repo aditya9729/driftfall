@@ -14,7 +14,43 @@ if(NOT bgfx_SOURCE_DIR)
 endif()
 list(APPEND CMAKE_MODULE_PATH "${bgfx_SOURCE_DIR}/cmake")
 
+# ---------------------------------------------------------------------------
+# shaderc has to run on the machine doing the build.
+#
+# bgfxToolUtils invokes the `bgfx::shaderc` target. When cross-compiling, bgfx
+# builds that target for the *target* — so `emcmake` produces a shaderc.js that
+# node runs inside Emscripten's virtual filesystem, where the real paths to our
+# .sc files do not exist. It fails with "Unable to open file", having compiled
+# everything else first.
+#
+# So when cross-compiling, a host-native shaderc must be supplied:
+#
+#   cmake -S . -B build-host -DDRIFTFALL_BUILD_CLIENT=ON -DDRIFTFALL_BUILD_TESTS=OFF
+#   cmake --build build-host --target shaderc
+#   emcmake cmake -S . -B build-web ... \
+#       -DDRIFTFALL_SHADERC=$PWD/build-host/_deps/bgfx-build/cmake/bgfx/shaderc
+# ---------------------------------------------------------------------------
+if(DRIFTFALL_SHADERC)
+    if(NOT EXISTS "${DRIFTFALL_SHADERC}")
+        message(FATAL_ERROR "DRIFTFALL_SHADERC is set to '${DRIFTFALL_SHADERC}', which does not exist")
+    endif()
+    if(NOT TARGET bgfx::shaderc)
+        add_executable(bgfx::shaderc IMPORTED GLOBAL)
+        set_target_properties(bgfx::shaderc PROPERTIES IMPORTED_LOCATION "${DRIFTFALL_SHADERC}")
+    endif()
+    message(STATUS "  shaderc ......... ${DRIFTFALL_SHADERC} (host-supplied)")
+elseif(CMAKE_CROSSCOMPILING)
+    message(FATAL_ERROR
+        "Cross-compiling without DRIFTFALL_SHADERC.\n"
+        "bgfx would build shaderc for the target, and a target-built shaderc cannot read "
+        "the .sc files off this filesystem. Build a host-native shaderc first and pass it:\n"
+        "  cmake -S . -B build-host -DDRIFTFALL_BUILD_CLIENT=ON -DDRIFTFALL_BUILD_TESTS=OFF\n"
+        "  cmake --build build-host --target shaderc\n"
+        "  <cross-cmake> ... -DDRIFTFALL_SHADERC=${CMAKE_SOURCE_DIR}/build-host/_deps/bgfx-build/cmake/bgfx/shaderc")
+endif()
+
 include(bgfxToolUtils)
+
 
 # bgfx_shader.sh — which defines mul(), u_modelViewProj and the rest of the
 # cross-backend shader prelude — has to be on shaderc's include path. bgfx.cmake

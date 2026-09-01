@@ -25,7 +25,7 @@ Repo, Apache-2.0, CI, the headless simulation core.
 
 ## M1 — It renders
 
-- [ ] Verify the web build in a browser end to end
+- [x] Verify the web build in a browser end to end
 - [x] On-screen debug HUD: frame time, chunks drawn, remesh backlog, heap
 - [ ] Touch camera and movement validated on a real phone
 - [ ] Skybox / starfield so the sector reads as being in space
@@ -34,12 +34,20 @@ Repo, Apache-2.0, CI, the headless simulation core.
 **Proof:** You can fly through a generated sector on your phone at a locked
 60 fps, and the HUD proves it.
 
-> **Where this actually stands.** The client now compiles and links, and the
-> shaders build for GLSL, ESSL and SPIR-V. None of that was true before: the
-> shader step could not run at all, so no part of the client had ever been
-> built by anything. The HUD's arithmetic is covered by unit tests, but no
-> frame of this game has yet been drawn on a screen — that is precisely what
-> the first and third boxes above are for, and neither is a code task.
+> **Where this actually stands.** The sector renders, in a browser and on a
+> desktop, and WASD + mouse-look move you through it. Getting there meant
+> fixing a build that had never once run — the shader step could not execute,
+> so no part of the client had ever been compiled by anything — and then three
+> bugs that were each invisible: bgfx was told the app was headless and
+> refused to initialise; the projection hardcoded one clip-space depth
+> convention; and the vertex layout bound bytes as integer attributes, which
+> WebGL2 rejects on every single draw while the draw-call counter still reads
+> a healthy 73.
+>
+> Still open, and neither is a code task: nobody has held this on a phone, and
+> the frame budget has only been measured under software rasterisers
+> (SwiftShader in a headless browser, llvmpipe on a desktop). Those numbers say
+> the HUD works. They say nothing about whether an iPhone 12 holds 60 fps.
 
 ---
 
