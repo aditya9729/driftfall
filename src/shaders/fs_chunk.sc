@@ -1,4 +1,4 @@
-$input v_normal, v_color0, v_wpos
+$input v_normal, v_color0, v_wpos, v_ao
 
 // Copyright 2026 Aditya Gudal
 // SPDX-License-Identifier: Apache-2.0
@@ -83,10 +83,17 @@ void main()
 	float upness = n.y * 0.5 + 0.5;
 	vec3 ambient = mix(u_ambientGround.rgb, u_ambientSky.rgb, upness);
 
+	// Occlusion attenuates ambient far more than direct light — a corner is
+	// dark because the sky cannot reach it, not because the sun cannot. Using
+	// one factor for both is what makes baked AO read as dirt smeared into the
+	// creases rather than as shape.
+	float aoAmbient = mix(0.10, 1.0, v_ao);
+	float aoDirect = mix(0.48, 1.0, v_ao);
+
 	float key = max(dot(n, l), 0.0);
 
 	vec3 halfVec = normalize(l + viewDir);
-	float spec = pow(max(dot(n, halfVec), 0.0), 48.0) * 0.4 * key;
+	float spec = pow(max(dot(n, halfVec), 0.0), 48.0) * 0.4 * key * aoDirect;
 
 	// Rim light picks the silhouette of cover out of the dark, which matters
 	// more than it looks: cover is the whole tactical layer of this game.
@@ -94,9 +101,9 @@ void main()
 	// every large surface the camera happens to see edge-on.
 	float fresnel = pow(1.0 - max(dot(n, viewDir), 0.0), 6.0);
 
-	vec3 lit = albedo * (ambient + u_keyColor.rgb * (key * u_keyColor.w));
+	vec3 lit = albedo * (ambient * aoAmbient + u_keyColor.rgb * (key * u_keyColor.w * aoDirect));
 	lit += u_keyColor.rgb * spec;
-	lit += u_rimColor.rgb * (fresnel * u_rimColor.w);
+	lit += u_rimColor.rgb * (fresnel * u_rimColor.w * aoAmbient);
 
 	// --- damage ------------------------------------------------------------
 	// Damage reads as heat: plating glows along the cracks before it fails.

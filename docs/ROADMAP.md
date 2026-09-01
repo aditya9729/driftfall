@@ -29,9 +29,11 @@ Repo, Apache-2.0, CI, the headless simulation core.
 - [x] On-screen debug HUD: frame time, chunks drawn, remesh backlog, heap
 - [ ] Touch camera and movement validated on a real phone
 - [x] Skybox / starfield so the sector reads as being in space
-- [ ] Screen-space AO pass — the last big one. Nothing in frame is occluded by
-      anything else, so a wall meeting the deck is a hard seam rather than a
-      corner, and that is now the most obviously missing thing in a shot.
+- [x] Ambient occlusion — baked per-vertex at mesh time rather than the
+      screen-space pass originally planned. Measured rather than estimated:
+      2.64× the quads, compression still 8.2× against a 2× floor, no extra GPU
+      pass. See docs/ARCHITECTURE.md for why the screen-space route is the
+      wrong one on a tiler.
 
 **Proof:** You can fly through a generated sector on your phone at a locked
 60 fps, and the HUD proves it.

@@ -1,5 +1,5 @@
 $input a_position, a_color0
-$output v_normal, v_color0, v_wpos
+$output v_normal, v_color0, v_wpos, v_ao
 
 // Copyright 2026 Aditya Gudal
 // SPDX-License-Identifier: Apache-2.0
@@ -45,12 +45,12 @@ void main()
 	int materialIndex = int(a_color0.x * 255.0 + 0.5);
 	vec3 base = u_materialColor[materialIndex].rgb;
 
-	// The mesher currently writes a constant AO level, so this is flat until a
-	// real occlusion term exists. Kept live so that enabling it is a one-line
-	// change in the mesher rather than a shader change too.
-	float aoTerm = 0.55 + 0.15 * ao;
+	// Corner occlusion, 0 (fully enclosed) to 3 (open), normalised. Interpolated
+	// across the quad by the rasteriser, which is the whole point: the mesher
+	// picks the triangle diagonal so that this gradient stays smooth.
+	v_ao = ao * (1.0 / 3.0);
 
 	// Alpha carries damage through to the fragment stage, where it drives the
 	// emissive crack glow. Damage is already 0..1 out of the normalised byte.
-	v_color0 = vec4(base * aoTerm, a_color0.y);
+	v_color0 = vec4(base, a_color0.y);
 }

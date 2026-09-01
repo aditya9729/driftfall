@@ -11,18 +11,36 @@ namespace {
 
 constexpr i32 N = Chunk::kSize;
 
-/// One entry of the sweep plane: which material shows a face here, and which
-/// way that face points. Two cells merge only if they are identical, so every
-/// field in here is a thing that will split a quad. Keep it small.
+/// One entry of the sweep plane: which material shows a face here, which way
+/// that face points, and how occluded each of its four corners is. Two cells
+/// merge only if they are identical, so every field in here is a thing that
+/// will split a quad. Keep it small.
 struct MaskCell {
     Voxel material = Voxel::Empty;
     i8 dir = 0;  // +1 face points along +axis, -1 along -axis, 0 no face
     u8 damage = 0;
+    /// Corner occlusion, 0 (fully enclosed) to 3 (open). Ordered to match the
+    /// emitted quad corners: (0,0), (u,0), (u,v), (0,v).
+    std::array<u8, 4> ao{3, 3, 3, 3};
 
     friend bool operator==(const MaskCell&, const MaskCell&) = default;
 
     [[nodiscard]] bool has_face() const { return dir != 0; }
 };
+
+/// The standard voxel corner-occlusion rule (Minecraft's "smooth lighting",
+/// described by Mikola Lysenko). `side1` and `side2` are the two voxels
+/// sharing an edge with this corner, `corner` the one diagonally across it.
+///
+/// The early return matters: once both sides are solid the corner is already
+/// sealed, and whether the diagonal voxel is there too cannot make it darker.
+/// Without it, an inside corner gets a strictly darker pixel where three
+/// blocks meet than where two do, which reads as a dirty smudge.
+constexpr u8 corner_occlusion(bool side1, bool side2, bool corner) {
+    if (side1 && side2) return 0;
+    return static_cast<u8>(3 -
+                           (static_cast<int>(side1) + static_cast<int>(side2) + static_cast<int>(corner)));
+}
 
 }  // namespace
 
@@ -52,6 +70,37 @@ ChunkMesh greedy_mesh(const VoxelWorld& world, ivec3 chunk_coord) {
         const u8 toughness = voxel_toughness(c->at(l.x, l.y, l.z));
         if (toughness == 0) return 0;
         return static_cast<u8>(std::min<u32>(255u, static_cast<u32>(raw) * 255u / toughness));
+    };
+
+    // Occlusion is sampled on the *air* side of a face — the side you can see
+    // — from the eight voxels ringing it in the face's own plane. `air` is the
+    // empty voxel the face looks into; u_axis and v_axis are the two world axes
+    // the face spans.
+    const auto corner_ao = [&](const ivec3& air, int u_axis, int v_axis) {
+        ivec3 U{0, 0, 0};
+        ivec3 V{0, 0, 0};
+        U[u_axis] = 1;
+        V[v_axis] = 1;
+
+        // Sample the 3x3 neighbourhood once rather than three voxels per
+        // corner; the four corners share six of the eight between them.
+        bool solid[3][3];
+        for (int du = -1; du <= 1; ++du) {
+            for (int dv = -1; dv <= 1; ++dv) {
+                solid[du + 1][dv + 1] = is_solid(sample(air + U * du + V * dv));
+            }
+        }
+
+        // Corner order matches the emitted quad: (0,0), (u,0), (u,v), (0,v).
+        constexpr std::array<std::array<int, 2>, 4> kCornerDirs{{{-1, -1}, {1, -1}, {1, 1}, {-1, 1}}};
+
+        std::array<u8, 4> out{};
+        for (usize c = 0; c < 4; ++c) {
+            const int su = kCornerDirs[c][0];
+            const int sv = kCornerDirs[c][1];
+            out[c] = corner_occlusion(solid[su + 1][1], solid[1][sv + 1], solid[su + 1][sv + 1]);
+        }
+        return out;
     };
 
     std::array<MaskCell, static_cast<usize>(N) * N> mask{};
@@ -93,11 +142,14 @@ ChunkMesh greedy_mesh(const VoxelWorld& world, ivec3 chunk_coord) {
                         // Both empty: there is nothing to draw.
                         mask[n] = MaskCell{};
                     } else if (solid_a) {
-                        mask[n] = owner_before_is_outside ? MaskCell{}
-                                                          : MaskCell{a, static_cast<i8>(1), damage_of(x)};
+                        mask[n] = owner_before_is_outside
+                                      ? MaskCell{}
+                                      : MaskCell{a, static_cast<i8>(1), damage_of(x), corner_ao(x + q, u, v)};
                     } else {
-                        mask[n] = owner_after_is_outside ? MaskCell{}
-                                                         : MaskCell{b, static_cast<i8>(-1), damage_of(x + q)};
+                        mask[n] =
+                            owner_after_is_outside
+                                ? MaskCell{}
+                                : MaskCell{b, static_cast<i8>(-1), damage_of(x + q), corner_ao(x, u, v)};
                     }
                 }
             }
@@ -145,43 +197,66 @@ ChunkMesh greedy_mesh(const VoxelWorld& world, ivec3 chunk_coord) {
                     // winding rule work for all three axes.
                     const u8 normal_index = static_cast<u8>(d * 2 + (cell.dir > 0 ? 0 : 1));
 
-                    // Ambient occlusion is deliberately flat here. Per-vertex AO
-                    // has to be part of the merge key or quads with differing
-                    // corner occlusion get merged and the shading tears. Folding
-                    // it in roughly triples the quad count, so AO is a screen-space
-                    // pass in the renderer instead (see docs/ARCHITECTURE.md).
-                    constexpr u8 kAoFull = 3;
-                    const u8 normal_ao = static_cast<u8>((normal_index << 2) | kAoFull);
-
+                    // Every cell in this rectangle carries the same four corner
+                    // occlusion values — that is exactly what the merge key
+                    // guarantees — so the rectangle inherits them directly.
                     const auto base_index = static_cast<u32>(mesh.vertices.size());
                     const std::array<ivec3, 4> corners{x, x + du, x + du + dv, x + dv};
-                    for (const ivec3& corner : corners) {
+                    for (usize c = 0; c < corners.size(); ++c) {
                         PackedVertex vert;
-                        vert.x = static_cast<u8>(corner.x);
-                        vert.y = static_cast<u8>(corner.y);
-                        vert.z = static_cast<u8>(corner.z);
-                        vert.normal_ao = normal_ao;
+                        vert.x = static_cast<u8>(corners[c].x);
+                        vert.y = static_cast<u8>(corners[c].y);
+                        vert.z = static_cast<u8>(corners[c].z);
+                        vert.normal_ao = static_cast<u8>((normal_index << 2) | cell.ao[c]);
                         vert.material = static_cast<u8>(cell.material);
                         vert.damage = cell.damage;
                         mesh.vertices.push_back(vert);
                     }
 
+                    // Splitting a quad into two triangles interpolates the
+                    // corner values anisotropically: a value on the shared
+                    // diagonal reaches across the whole quad, one off it does
+                    // not. With unequal corners that shows up as a hard crease
+                    // running corner to corner. Putting the diagonal across the
+                    // *darker* pair keeps the gradient smooth.
+                    const bool flip = (cell.ao[0] + cell.ao[2]) > (cell.ao[1] + cell.ao[3]);
+
                     if (cell.dir > 0) {
-                        mesh.indices.insert(mesh.indices.end(),
-                                            {base_index + 0,
-                                             base_index + 1,
-                                             base_index + 2,
-                                             base_index + 0,
-                                             base_index + 2,
-                                             base_index + 3});
+                        if (flip) {
+                            mesh.indices.insert(mesh.indices.end(),
+                                                {base_index + 1,
+                                                 base_index + 2,
+                                                 base_index + 3,
+                                                 base_index + 1,
+                                                 base_index + 3,
+                                                 base_index + 0});
+                        } else {
+                            mesh.indices.insert(mesh.indices.end(),
+                                                {base_index + 0,
+                                                 base_index + 1,
+                                                 base_index + 2,
+                                                 base_index + 0,
+                                                 base_index + 2,
+                                                 base_index + 3});
+                        }
                     } else {
-                        mesh.indices.insert(mesh.indices.end(),
-                                            {base_index + 0,
-                                             base_index + 2,
-                                             base_index + 1,
-                                             base_index + 0,
-                                             base_index + 3,
-                                             base_index + 2});
+                        if (flip) {
+                            mesh.indices.insert(mesh.indices.end(),
+                                                {base_index + 1,
+                                                 base_index + 3,
+                                                 base_index + 2,
+                                                 base_index + 1,
+                                                 base_index + 0,
+                                                 base_index + 3});
+                        } else {
+                            mesh.indices.insert(mesh.indices.end(),
+                                                {base_index + 0,
+                                                 base_index + 2,
+                                                 base_index + 1,
+                                                 base_index + 0,
+                                                 base_index + 3,
+                                                 base_index + 2});
+                        }
                     }
 
                     ++mesh.quads;

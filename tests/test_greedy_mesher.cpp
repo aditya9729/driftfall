@@ -220,3 +220,118 @@ TEST_CASE("greedy merging beats naive meshing on a real sector") {
     // output and the vertex budget is blown.
     CHECK(ratio > 2.0);
 }
+
+// --- ambient occlusion -----------------------------------------------------
+// The corner-occlusion term is the one part of the lighting model baked into
+// the mesh, so it is the one part a shader cannot be blamed for. These pin the
+// rule down rather than leaving it to be eyeballed in a screenshot.
+
+TEST_CASE("a lone voxel is unoccluded at every corner") {
+    VoxelWorld world(1, 1, 1);
+    world.set(8, 8, 8, Voxel::HullPlate);
+
+    const ChunkMesh mesh = greedy_mesh(world, {0, 0, 0});
+    check_mesh_invariants(mesh);
+    REQUIRE(mesh.quads == 6);
+
+    // Nothing is next to it, so nothing can occlude it.
+    for (const PackedVertex& vertex : mesh.vertices) {
+        CHECK(vertex.ao() == 3);
+    }
+}
+
+TEST_CASE("a voxel standing on a surface occludes it, one beside it does not") {
+    // Occlusion is sampled in the plane the face looks into, so only something
+    // *raised* above a surface can shade it. Two voxels sitting side by side
+    // are coplanar, their top faces meet flush, and neither darkens the other —
+    // which is correct, and the case worth pinning down because it is the one
+    // people expect to go the other way.
+    VoxelWorld flat(1, 1, 1);
+    flat.set(8, 8, 8, Voxel::HullPlate);
+    flat.set(9, 8, 8, Voxel::HullPlate);
+    for (const PackedVertex& vertex : greedy_mesh(flat, {0, 0, 0}).vertices) {
+        CHECK(vertex.ao() == 3);
+    }
+
+    // Raise the neighbour by one and it now sits in the first voxel's sky.
+    VoxelWorld raised(1, 1, 1);
+    raised.set(8, 8, 8, Voxel::HullPlate);
+    raised.set(9, 9, 8, Voxel::HullPlate);
+
+    const ChunkMesh mesh = greedy_mesh(raised, {0, 0, 0});
+    check_mesh_invariants(mesh);
+
+    u32 occluded = 0;
+    for (const PackedVertex& vertex : mesh.vertices) {
+        CHECK(vertex.ao() <= 3);
+        if (vertex.ao() < 3) ++occluded;
+    }
+    CHECK(occluded > 0);
+}
+
+TEST_CASE("two touching sides seal a corner completely") {
+    // An inside corner. The deck voxel's top face looks into the plane above
+    // it; two walls rising out of that plane at right angles enclose the corner
+    // between them, which is the case the rule short-circuits to 0 rather than
+    // letting the diagonal voxel darken it further.
+    VoxelWorld world(1, 1, 1);
+    world.set(8, 8, 8, Voxel::HullPlate);  // the deck
+    world.set(9, 9, 8, Voxel::HullPlate);  // wall along +x, one above
+    world.set(8, 9, 9, Voxel::HullPlate);  // wall along +z, one above
+
+    const ChunkMesh mesh = greedy_mesh(world, {0, 0, 0});
+    check_mesh_invariants(mesh);
+
+    bool sealed = false;
+    for (const PackedVertex& vertex : mesh.vertices) {
+        if (vertex.ao() == 0) sealed = true;
+    }
+    CHECK(sealed);
+}
+
+TEST_CASE("differing occlusion splits a quad") {
+    // A flat slab merges into one quad per face. Standing a single block on it
+    // occludes only some of the deck's corners, so the deck can no longer be
+    // one rectangle — which is exactly the cost of baking AO into the mesh,
+    // and the reason occlusion has to be part of the merge key.
+    VoxelWorld bare(1, 1, 1);
+    for (i32 z = 4; z < 12; ++z) {
+        for (i32 x = 4; x < 12; ++x) bare.set(x, 4, z, Voxel::HullPlate);
+    }
+    const ChunkMesh flat = greedy_mesh(bare, {0, 0, 0});
+
+    VoxelWorld bumped(1, 1, 1);
+    for (i32 z = 4; z < 12; ++z) {
+        for (i32 x = 4; x < 12; ++x) bumped.set(x, 4, z, Voxel::HullPlate);
+    }
+    bumped.set(8, 5, 8, Voxel::HullPlate);
+    const ChunkMesh bumpy = greedy_mesh(bumped, {0, 0, 0});
+
+    check_mesh_invariants(flat);
+    check_mesh_invariants(bumpy);
+    CHECK(bumpy.quads > flat.quads);
+}
+
+TEST_CASE("occlusion stays inside the two bits it is packed into") {
+    VoxelWorld world(2, 1, 2);
+    generate_test_sector(world, 99);
+
+    const ivec3 chunks = world.size_in_chunks();
+    bool saw_occlusion = false;
+    for (i32 z = 0; z < chunks.z; ++z) {
+        for (i32 y = 0; y < chunks.y; ++y) {
+            for (i32 x = 0; x < chunks.x; ++x) {
+                const ChunkMesh mesh = greedy_mesh(world, {x, y, z});
+                for (const PackedVertex& vertex : mesh.vertices) {
+                    // ao() masks to 2 bits, so this can only fail if the normal
+                    // index bled into them.
+                    REQUIRE(vertex.ao() <= 3);
+                    REQUIRE(vertex.normal_index() < 6);
+                    if (vertex.ao() < 3) saw_occlusion = true;
+                }
+            }
+        }
+    }
+    // A generated sector has inside corners; if it does not, AO is not running.
+    CHECK(saw_occlusion);
+}

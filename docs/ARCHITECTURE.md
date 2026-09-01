@@ -100,15 +100,53 @@ bytes. At tens of thousands of vertices per visible chunk across dozens of
 chunks, that difference *is* the vertex-fetch bandwidth budget of a mobile GPU.
 The vertex shader unpacks and offsets by the chunk origin.
 
-Ambient occlusion is deliberately flat in the mesh. Per-vertex AO must be part
-of the merge key or quads with differing corner occlusion merge and the shading
-tears — and folding it in roughly triples the quad count. AO belongs in a
-screen-space pass instead.
+### Ambient occlusion is baked into the mesh
 
-The mesher still writes the AO field, and the vertex shader still reads it, but
-it writes a constant, so the term is currently 1.0 everywhere. That is the one
-piece of the lighting model that is not yet real, and it shows: nothing in
-frame is occluded by anything else.
+Occlusion is per-vertex, computed at mesh time from the eight voxels ringing
+each face in the plane it looks into, using the standard rule:
+
+```
+if (side1 && side2) return 0;
+return 3 - (side1 + side2 + corner);
+```
+
+The early return is load-bearing: once two sides are solid the corner is
+already sealed, and letting the diagonal voxel darken it further gives a
+strictly darker pixel where three blocks meet than where two do, which reads
+as a smudge rather than as a corner.
+
+Two consequences, both handled:
+
+**Occlusion joins the merge key.** Quads only merge when all four corner values
+agree, or the shading tears across the seam.
+
+**The quad's triangle diagonal is chosen, not fixed.** Splitting a quad
+interpolates its corner values anisotropically — a value on the shared diagonal
+reaches across the whole quad, one off it does not — so with unequal corners
+the default diagonal shows a hard crease. The mesher flips it when
+`ao[0] + ao[2] > ao[1] + ao[3]`, which on a generated sector fires on about 15%
+of quads.
+
+This reverses an earlier decision to do AO in a screen-space pass, and the
+reason is worth recording, because it is a case where the general-purpose
+answer is the wrong one:
+
+| | measured |
+|---|---|
+| quads, sector-wide | 12,386 → 32,721 (2.64×) |
+| face→quad compression | 21.7× → 8.2× (the test floor is 2×) |
+| whole-sector mesh time | 224 ms → 267 ms (+19%) |
+| draw calls | unchanged |
+| extra GPU passes | none |
+
+The original estimate — "roughly triples the quad count" — was accurate. Its
+conclusion was not: compression lands at 8×, four times above the floor the
+test guards, and the runtime cost is zero extra passes. Meanwhile screen-space
+AO on a tile-based mobile GPU needs a depth prepass, two blur passes and a
+blit, all of which are GMEM traffic on exactly the hardware this ships on.
+Modern engines reach for GTAO because they cannot assume anything about their
+geometry. A voxel game can: the occluders are a known 1-unit grid, so the
+answer is computable exactly, once, at mesh time.
 
 ## Shading
 
@@ -214,7 +252,7 @@ calling code never needs a separate path.
 
 ## Testing
 
-86 tests, ~59 k assertions, all headless. Four things they are specifically
+91 tests, ~59 k assertions, all headless. Four things they are specifically
 there to protect:
 
 1. **The mesher's face accounting.** Every test asserts
