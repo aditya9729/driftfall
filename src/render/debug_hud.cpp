@@ -32,7 +32,11 @@ constexpr f64 kBytesPerMb = 1024.0 * 1024.0;
 
 }  // namespace
 
-void DebugHud::draw(const FrameStats& frame, const RendererStats& render, f64 now, const vec3& player) {
+void DebugHud::draw(const FrameStats& frame,
+                    const RendererStats& render,
+                    const RunSnapshot& run,
+                    f64 now,
+                    const vec3& player) {
     bgfx::setDebug(visible_ ? BGFX_DEBUG_TEXT : BGFX_DEBUG_NONE);
     if (!visible_) return;
 
@@ -109,6 +113,43 @@ void DebugHud::draw(const FrameStats& frame, const RendererStats& render, f64 no
                         static_cast<f64>(player.x),
                         static_cast<f64>(player.y),
                         static_cast<f64>(player.z));
+
+    ++row;
+
+    // --- the run -----------------------------------------------------------
+    // All of this is simulated every frame whether or not anything draws it.
+    // Having it on screen is the difference between playtesting the game and
+    // playtesting the fly-through.
+    bgfx::dbgTextPrintf(2,
+                        row++,
+                        kLabel,
+                        "run     %s  wave %d  %5.1fs left  enemies %d",
+                        run.phase,
+                        static_cast<int>(run.wave),
+                        static_cast<double>(run.phase_seconds_left),
+                        static_cast<int>(run.enemies));
+
+    const f64 health_frac = run.health_max > 0.0f ? static_cast<f64>(run.health / run.health_max) : 0.0;
+    const u8 health_attr = health_frac > 0.6 ? kOk : (health_frac > 0.25 ? kWarn : kOver);
+    bgfx::dbgTextPrintf(2,
+                        row++,
+                        health_attr,
+                        "hull    %5.1f / %.0f      salvage %d",
+                        static_cast<double>(run.health),
+                        static_cast<double>(run.health_max),
+                        static_cast<int>(run.salvage));
+
+    const u8 ammo_attr = run.ammo > 0 ? kOk : kOver;
+    bgfx::dbgTextPrintf(2,
+                        row++,
+                        ammo_attr,
+                        "weapon  %d / %d  %s%s",
+                        static_cast<int>(run.ammo),
+                        static_cast<int>(run.mag_size),
+                        run.reload,
+                        run.boosted ? "  BOOSTED" : "");
+
+    ++row;
 
     // A dropped step means the device could not keep up and the simulation
     // deliberately fell behind wall-clock rather than spiral. A stall means the

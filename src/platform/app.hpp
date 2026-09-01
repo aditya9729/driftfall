@@ -48,6 +48,8 @@ private:
 
     void handle_resize();
 
+    [[nodiscard]] RunSnapshot run_snapshot() const;
+
     SDL_Window* window_ = nullptr;
     std::unique_ptr<Sim> sim_;
     std::unique_ptr<Renderer> renderer_;

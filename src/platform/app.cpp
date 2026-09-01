@@ -71,6 +71,32 @@ bool fill_platform_data(SDL_Window* window, bgfx::PlatformData& pd) {
 /// deliberate, heavy jog — the Gears weight, not the Quake sprint.
 constexpr f32 kMoveSpeed = 11.0f;
 
+const char* phase_name(Phase phase) {
+    switch (phase) {
+        case Phase::Prep:
+            return "PREP";
+        case Phase::Assault:
+            return "ASSAULT";
+        case Phase::Cleared:
+            return "CLEARED";
+        case Phase::Defeat:
+            return "DEFEAT";
+    }
+    return "?";
+}
+
+const char* reload_name(ReloadState state) {
+    switch (state) {
+        case ReloadState::Ready:
+            return "ready";
+        case ReloadState::Reloading:
+            return "reloading";
+        case ReloadState::Jammed:
+            return "JAMMED";
+    }
+    return "?";
+}
+
 }  // namespace
 
 App::App() = default;
@@ -217,6 +243,25 @@ void App::apply_input(f32 dt) {
     }
 }
 
+RunSnapshot App::run_snapshot() const {
+    RunSnapshot run;
+    if (sim_ == nullptr) return run;
+
+    const Weapon& weapon = sim_->weapon();
+    run.phase = phase_name(sim_->phase());
+    run.reload = reload_name(weapon.state());
+    run.wave = sim_->wave_index();
+    run.phase_seconds_left = sim_->phase_time_remaining();
+    run.enemies = sim_->enemies_remaining();
+    run.salvage = sim_->salvage();
+    run.health = sim_->player_health().current;
+    run.health_max = sim_->player_health().max;
+    run.ammo = weapon.ammo();
+    run.mag_size = weapon.stats().mag_size;
+    run.boosted = weapon.boosted();
+    return run;
+}
+
 bool App::frame() {
     if (!running_) return false;
 
@@ -255,7 +300,7 @@ bool App::frame() {
 
     renderer_->collect_dirty(sim_->world());
     renderer_->render(sim_->world(), camera_);
-    hud_.draw(frame_stats_, renderer_->stats(), current, player_position_);
+    hud_.draw(frame_stats_, renderer_->stats(), run_snapshot(), current, player_position_);
 
     bgfx::frame();
     return true;
