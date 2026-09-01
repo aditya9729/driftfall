@@ -9,6 +9,7 @@
 
 #include <bgfx/bgfx.h>
 
+#include <array>
 #include <unordered_map>
 
 namespace df {
@@ -64,6 +65,13 @@ public:
 
     static constexpr bgfx::ViewId kMainView = 0;
 
+    /// The sky is drawn *after* the sector, in a later view, with a depth test
+    /// against what the sector already wrote. On a tiler that rejects almost
+    /// every pixel before the sky shader runs — inside the hull the open
+    /// ceiling is a sliver of the screen — where a background pass would have
+    /// shaded the whole frame and then thrown it away.
+    static constexpr bgfx::ViewId kSkyView = 1;
+
 private:
     struct ChunkHash {
         usize operator()(const ivec3& c) const noexcept {
@@ -79,6 +87,8 @@ private:
         }
     };
 
+    void draw_sky(const Camera& camera);
+
     bgfx::ProgramHandle program_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_chunk_origin_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_material_color_ = BGFX_INVALID_HANDLE;
@@ -86,6 +96,25 @@ private:
     bgfx::UniformHandle u_fog_params_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_fog_color_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_eye_pos_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_ambient_sky_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_ambient_ground_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_key_color_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_rim_color_ = BGFX_INVALID_HANDLE;
+
+    bgfx::ProgramHandle sky_program_ = BGFX_INVALID_HANDLE;
+    bgfx::VertexBufferHandle sky_vertices_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_cam_right_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_cam_up_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_cam_forward_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_sky_horizon_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_sky_zenith_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_sky_nadir_ = BGFX_INVALID_HANDLE;
+
+    /// The material palette converted to linear once at startup. The table is
+    /// authored in display space because that is the only way to read it, but
+    /// every light in the shader is linear, so mixing the two is what makes
+    /// flat-shaded surfaces look plastic.
+    std::array<f32, 8 * 4> material_colors_linear_{};
 
     std::unordered_map<ivec3, GpuChunkMesh, ChunkHash, ChunkEq> meshes_;
     std::vector<ivec3> remesh_queue_;

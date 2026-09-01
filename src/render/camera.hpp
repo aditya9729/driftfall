@@ -42,6 +42,17 @@ public:
 
     [[nodiscard]] vec3 flat_right() const;
 
+    /// The full camera basis, matching view(). The sky pass builds its view
+    /// rays out of these rather than inverting the view-projection, which
+    /// would have to be got right separately per clip-space convention.
+    [[nodiscard]] vec3 right() const;
+
+    [[nodiscard]] vec3 up() const;
+
+    [[nodiscard]] f32 fov_y() const { return fov_y_; }
+
+    [[nodiscard]] f32 aspect() const { return aspect_; }
+
     static constexpr f32 kMinPitch = -1.35f;
     static constexpr f32 kMaxPitch = 1.25f;
 

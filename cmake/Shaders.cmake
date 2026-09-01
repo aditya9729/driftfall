@@ -129,7 +129,7 @@ endfunction()
 
 bgfx_compile_shader_to_header(
     TYPE VERTEX
-    SHADERS "${DRIFTFALL_SHADER_DIR}/vs_chunk.sc"
+    SHADERS "${DRIFTFALL_SHADER_DIR}/vs_chunk.sc" "${DRIFTFALL_SHADER_DIR}/vs_sky.sc"
     VARYING_DEF "${DRIFTFALL_SHADER_DIR}/varying.def.sc"
     OUTPUT_DIR "${DRIFTFALL_SHADER_OUT}"
     INCLUDE_DIRS "${DRIFTFALL_BGFX_SHADER_INCLUDE}"
@@ -138,7 +138,7 @@ bgfx_compile_shader_to_header(
 
 bgfx_compile_shader_to_header(
     TYPE FRAGMENT
-    SHADERS "${DRIFTFALL_SHADER_DIR}/fs_chunk.sc"
+    SHADERS "${DRIFTFALL_SHADER_DIR}/fs_chunk.sc" "${DRIFTFALL_SHADER_DIR}/fs_sky.sc"
     VARYING_DEF "${DRIFTFALL_SHADER_DIR}/varying.def.sc"
     OUTPUT_DIR "${DRIFTFALL_SHADER_OUT}"
     INCLUDE_DIRS "${DRIFTFALL_BGFX_SHADER_INCLUDE}"
@@ -147,5 +147,7 @@ bgfx_compile_shader_to_header(
 
 driftfall_aggregate_shader_header(vs_chunk VERTEX)
 driftfall_aggregate_shader_header(fs_chunk FRAGMENT)
+driftfall_aggregate_shader_header(vs_sky VERTEX)
+driftfall_aggregate_shader_header(fs_sky FRAGMENT)
 
 add_custom_target(df_shaders DEPENDS ${DRIFTFALL_VS_OUTPUTS} ${DRIFTFALL_FS_OUTPUTS})

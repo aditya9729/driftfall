@@ -38,6 +38,15 @@ vec3 Camera::flat_right() const {
     return {std::cos(yaw_), 0.0f, -std::sin(yaw_)};
 }
 
+vec3 Camera::right() const {
+    // Matches glm::lookAtLH's basis: x = normalize(cross(up, forward)).
+    return glm::normalize(glm::cross(vec3{0.0f, 1.0f, 0.0f}, forward()));
+}
+
+vec3 Camera::up() const {
+    return glm::cross(forward(), right());
+}
+
 void Camera::update(f32 dt) {
     const vec3 right = flat_right();
     const vec3 anchor = target_ + right * shoulder_offset_.x + vec3{0.0f, shoulder_offset_.y, 0.0f};

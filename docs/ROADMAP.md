@@ -28,8 +28,10 @@ Repo, Apache-2.0, CI, the headless simulation core.
 - [x] Verify the web build in a browser end to end
 - [x] On-screen debug HUD: frame time, chunks drawn, remesh backlog, heap
 - [ ] Touch camera and movement validated on a real phone
-- [ ] Skybox / starfield so the sector reads as being in space
-- [ ] Screen-space AO pass
+- [x] Skybox / starfield so the sector reads as being in space
+- [ ] Screen-space AO pass — the last big one. Nothing in frame is occluded by
+      anything else, so a wall meeting the deck is a hard seam rather than a
+      corner, and that is now the most obviously missing thing in a shot.
 
 **Proof:** You can fly through a generated sector on your phone at a locked
 60 fps, and the HUD proves it.

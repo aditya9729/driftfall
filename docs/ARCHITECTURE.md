@@ -105,6 +105,46 @@ of the merge key or quads with differing corner occlusion merge and the shading
 tears — and folding it in roughly triples the quad count. AO belongs in a
 screen-space pass instead.
 
+The mesher still writes the AO field, and the vertex shader still reads it, but
+it writes a constant, so the term is currently 1.0 everywhere. That is the one
+piece of the lighting model that is not yet real, and it shows: nothing in
+frame is occluded by anything else.
+
+## Shading
+
+Everything is forward-rendered and there is no offscreen target, which keeps
+the whole frame inside one pass on a tile-based GPU.
+
+**Cell definition is the load-bearing trick.** Greedy meshing merges a whole
+wall into a couple of enormous quads, so a purely per-face shading model draws
+a handful of flat slabs — which is exactly what makes untextured voxels read as
+a 1990s software renderer. The fragment shader recovers the voxel grid from the
+world position instead: `fract()` of the two in-plane world axes gives the
+position inside the cell, which drives a groove at the cell edges, and a hash of
+the cell index gives each voxel a stable value shift. It costs no extra
+geometry, no extra draw call, and no texture fetch, and it is what makes a wall
+read as built out of blocks. Both terms fade out with distance, because a
+sub-pixel dark line is just shimmer.
+
+**Lighting is linear, output is not.** The material palette is authored in
+display space, converted to linear once at startup, lit, tonemapped (ACES), and
+encoded back on write. Skipping any of that is what makes flat-shaded surfaces
+look like plastic.
+
+Ambient is hemispheric rather than a flat fill: in vacuum almost nothing bounces
+off the deck, so having up and down differ is what stops every surface reading
+as the same material. The rim term is deliberately weak — rim is *additive*, and
+a large surface seen at a grazing angle has a fresnel of nearly 1 across its
+whole area, so a strong rim stops being an edge highlight and becomes a wash
+that buries both the material colour and the grooves underneath it.
+
+**The sky is procedural and drawn last.** No cubemap: a skybox texture large
+enough not to look soft on a phone is several megabytes of the memory budget,
+and the web build deliberately has no asset-loading path. It is submitted after
+the sector, in a later view, with a depth test against what the sector already
+wrote — so on a tiler almost every pixel is rejected before the shader runs.
+Inside the hull, the open ceiling is a sliver of the screen.
+
 ## Frame pacing
 
 ### Fixed timestep
