@@ -102,9 +102,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: seanmiddleditch/gha-setup-ninja@v5
 
-      - name: Install system dependencies for host shaderc
-        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libx11-dev
-
       - name: Set up Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:
@@ -114,9 +111,14 @@ jobs:
       # shaderc reads .sc files off the real filesystem, so it has to be a
       # host-native binary. Built under emcmake it becomes a shaderc.js that
       # runs in Emscripten's virtual filesystem and cannot open them.
+      #
+      # HOST_TOOLS_ONLY keeps SDL3 out of this configure. SDL3 will not
+      # configure on Linux without X11 or Wayland development libraries, which
+      # made building a shader compiler depend on the runner having a desktop
+      # windowing stack installed.
       - name: Build a host-native shaderc
         run: |
-          cmake -S . -B build-host -G Ninja -DDRIFTFALL_BUILD_CLIENT=ON -DDRIFTFALL_BUILD_TESTS=OFF
+          cmake -S . -B build-host -G Ninja -DDRIFTFALL_HOST_TOOLS_ONLY=ON
           cmake --build build-host --target shaderc
 
       - name: Configure

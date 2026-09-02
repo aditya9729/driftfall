@@ -21,6 +21,17 @@ option(DRIFTFALL_BUILD_CLIENT "Build the graphical client (SDL3 + bgfx)" ON)
 option(DRIFTFALL_BUILD_TESTS  "Build the unit test suite" ON)
 option(DRIFTFALL_WERROR       "Treat compiler warnings as errors" OFF)
 
+# Configures bgfx's host tools (shaderc) and nothing else. Cross-compiling to
+# wasm or iOS needs a host-native shaderc — see cmake/Shaders.cmake — and
+# building one should not require SDL3, a windowing stack, or any of our own
+# targets.
+option(DRIFTFALL_HOST_TOOLS_ONLY "Configure only bgfx's host tools (shaderc)" OFF)
+
+if(DRIFTFALL_HOST_TOOLS_ONLY)
+    set(DRIFTFALL_BUILD_CLIENT OFF)
+    set(DRIFTFALL_BUILD_TESTS OFF)
+endif()
+
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(Warnings)
 

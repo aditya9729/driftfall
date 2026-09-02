@@ -77,8 +77,10 @@ has to be built for *this* machine. Built under `emcmake` it becomes a
 not exist:
 
 ```bash
-# 1. a host-native shaderc (only the one target, so this does not build SDL3)
-cmake -S . -B build-host -G Ninja -DDRIFTFALL_BUILD_CLIENT=ON -DDRIFTFALL_BUILD_TESTS=OFF
+# 1. a host-native shaderc. HOST_TOOLS_ONLY keeps SDL3 out of this configure —
+#    it needs X11 or Wayland headers, which building a shader compiler should
+#    not require.
+cmake -S . -B build-host -G Ninja -DDRIFTFALL_HOST_TOOLS_ONLY=ON
 cmake --build build-host --target shaderc
 
 # 2. the wasm build, pointed at it

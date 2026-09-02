@@ -8,6 +8,14 @@
 include(FetchContent)
 set(FETCHCONTENT_QUIET OFF)
 
+# CMake 4 removed compatibility with projects whose own cmake_minimum_required
+# is below 3.5, and doctest v2.4.11 still declares one — so a runner that has
+# moved to CMake 4 (macOS already has) fails at configure time on a dependency
+# rather than on anything here. Their build files are not ours to edit and the
+# pins are deliberate, so raise the floor on their behalf. CMake below 3.31 does
+# not know this variable and simply ignores it.
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+
 # --- glm (MIT) — header-only math -------------------------------------------
 FetchContent_Declare(glm
     GIT_REPOSITORY https://github.com/g-truc/glm.git
@@ -37,18 +45,24 @@ if(DRIFTFALL_BUILD_TESTS)
 endif()
 
 # --- Client-only dependencies -----------------------------------------------
-if(DRIFTFALL_BUILD_CLIENT)
-    # SDL3 (zlib) — window, input, audio, iOS + Emscripten entry points.
-    FetchContent_Declare(SDL3
-        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-        GIT_TAG        release-3.2.8
-        GIT_SHALLOW    TRUE
-    )
-    set(SDL_SHARED OFF CACHE BOOL "" FORCE)
-    set(SDL_STATIC ON  CACHE BOOL "" FORCE)
-    set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
-    set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
-    FetchContent_MakeAvailable(SDL3)
+if(DRIFTFALL_BUILD_CLIENT OR DRIFTFALL_HOST_TOOLS_ONLY)
+    # SDL3 is deliberately skipped for a host-tools configure. shaderc needs
+    # bgfx and nothing else, whereas SDL3 refuses to configure on Linux without
+    # X11 or Wayland development libraries — so pulling it in made building a
+    # shader compiler depend on the runner having a desktop windowing stack.
+    if(NOT DRIFTFALL_HOST_TOOLS_ONLY)
+        # SDL3 (zlib) — window, input, audio, iOS + Emscripten entry points.
+        FetchContent_Declare(SDL3
+            GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+            GIT_TAG        release-3.2.8
+            GIT_SHALLOW    TRUE
+        )
+        set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+        set(SDL_STATIC ON  CACHE BOOL "" FORCE)
+        set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+        set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+        FetchContent_MakeAvailable(SDL3)
+    endif()
 
     # bgfx (BSD-2) — one shader pipeline that reaches Metal on iOS and
     # WebGL2/WebGPU in the browser. This is the whole reason the renderer is
@@ -86,5 +100,9 @@ if(DRIFTFALL_BUILD_CLIENT)
     endif()
     FetchContent_MakeAvailable(bgfx)
 
-    include(Shaders)
+    # Shaders.cmake wires up the compile rules for our own .sc files, which a
+    # host-tools configure has no interest in — it only wants the compiler.
+    if(NOT DRIFTFALL_HOST_TOOLS_ONLY)
+        include(Shaders)
+    endif()
 endif()

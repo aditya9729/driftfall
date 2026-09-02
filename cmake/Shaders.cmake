@@ -44,7 +44,7 @@ elseif(CMAKE_CROSSCOMPILING)
         "Cross-compiling without DRIFTFALL_SHADERC.\n"
         "bgfx would build shaderc for the target, and a target-built shaderc cannot read "
         "the .sc files off this filesystem. Build a host-native shaderc first and pass it:\n"
-        "  cmake -S . -B build-host -DDRIFTFALL_BUILD_CLIENT=ON -DDRIFTFALL_BUILD_TESTS=OFF\n"
+        "  cmake -S . -B build-host -DDRIFTFALL_HOST_TOOLS_ONLY=ON\n"
         "  cmake --build build-host --target shaderc\n"
         "  <cross-cmake> ... -DDRIFTFALL_SHADERC=${CMAKE_SOURCE_DIR}/build-host/_deps/bgfx-build/cmake/bgfx/shaderc")
 endif()
