@@ -16,6 +16,24 @@ set(FETCHCONTENT_QUIET OFF)
 # not know this variable and simply ignores it.
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
+# Compile third-party headers as system headers.
+#
+# Our warning set is deliberately strict and applies to every translation unit,
+# which means it also applies to whatever a dependency's headers happen to do.
+# That is not a useful signal: EnTT declares `operator"" _hs` with a space,
+# which newer clang deprecates, and with -Werror that fails the build over code
+# nobody here can change. Marking their include directories SYSTEM keeps the
+# strictness pointed at our own code, where it belongs.
+function(driftfall_mark_dependency_system target)
+    if(NOT TARGET ${target})
+        return()
+    endif()
+    get_target_property(includes ${target} INTERFACE_INCLUDE_DIRECTORIES)
+    if(includes)
+        set_target_properties(${target} PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${includes}")
+    endif()
+endfunction()
+
 # --- glm (MIT) — header-only math -------------------------------------------
 FetchContent_Declare(glm
     GIT_REPOSITORY https://github.com/g-truc/glm.git
@@ -25,6 +43,7 @@ FetchContent_Declare(glm
 set(GLM_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLM_BUILD_INSTALL OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(glm)
+driftfall_mark_dependency_system(glm)
 
 # --- EnTT (MIT) — entity component system -----------------------------------
 FetchContent_Declare(EnTT
@@ -33,6 +52,7 @@ FetchContent_Declare(EnTT
     GIT_SHALLOW    TRUE
 )
 FetchContent_MakeAvailable(EnTT)
+driftfall_mark_dependency_system(EnTT)
 
 # --- doctest (MIT) — unit tests ---------------------------------------------
 if(DRIFTFALL_BUILD_TESTS)
@@ -42,6 +62,7 @@ if(DRIFTFALL_BUILD_TESTS)
         GIT_SHALLOW    TRUE
     )
     FetchContent_MakeAvailable(doctest)
+    driftfall_mark_dependency_system(doctest)
 endif()
 
 # --- Client-only dependencies -----------------------------------------------
