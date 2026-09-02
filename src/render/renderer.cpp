@@ -9,6 +9,7 @@
 #include "generated/shaders/fs_sky.sc.bin.h"
 #include "generated/shaders/vs_chunk.sc.bin.h"
 #include "generated/shaders/vs_sky.sc.bin.h"
+#include "render/art_direction.hpp"
 #include "voxel/greedy_mesher.hpp"
 
 #include <bgfx/embedded_shader.h>
@@ -41,42 +42,11 @@ constexpr std::array<SkyVertex, 3> kSkyTriangle = {{
     {-1.0f, 3.0f, 0.0f},
 }};
 
-f32 srgb_to_linear(f32 c) {
-    return c <= 0.04045f ? c / 12.92f : std::pow((c + 0.055f) / 1.055f, 2.4f);
-}
-
-// --- art direction ---------------------------------------------------------
-// Linear values, not display values: everything the shader does is linear and
-// only the final write is encoded back. All of it lives here rather than in the
-// shaders so the look can be tuned in one place without a shader rebuild.
-
-/// Cold starlight from above. w is the shared exposure, applied before the
-/// tonemap by both the chunk and sky shaders.
-constexpr std::array<f32, 4> kAmbientSky = {0.050f, 0.072f, 0.120f, 1.0f};
-
-/// Vacuum: essentially nothing bounces back off the deck. Keeping this near
-/// black is what gives surfaces a direction instead of a uniform wash.
-constexpr std::array<f32, 4> kAmbientGround = {0.012f, 0.013f, 0.018f, 0.0f};
-
-/// A distant sun, slightly warm. w is intensity.
-constexpr std::array<f32, 4> kKeyColor = {1.0f, 0.94f, 0.85f, 1.05f};
-
-/// Rim light, cold. Picks the silhouette of cover out of the dark, which is
-/// what makes the tactical layer readable at a glance.
-///
-/// Kept deliberately weak. Rim is an *additive* term, and a large flat surface
-/// seen at a grazing angle has a fresnel of nearly 1 across its whole area —
-/// so anything stronger than this stops being an edge highlight and becomes a
-/// blue wash over the floor that buries both the material colour and the
-/// per-voxel grooves underneath it.
-constexpr std::array<f32, 4> kRimColor = {0.16f, 0.28f, 0.50f, 0.10f};
-
-/// The fog colour doubles as the sky horizon, so the two never disagree at
-/// the point where a distant wall meets open space through a breach.
-constexpr std::array<f32, 3> kFogColor = {0.020f, 0.028f, 0.048f};
-
-constexpr std::array<f32, 4> kSkyZenith = {0.010f, 0.014f, 0.030f, 0.0f};
-constexpr std::array<f32, 4> kSkyNadir = {0.004f, 0.005f, 0.008f, 0.0f};
+// The art direction — every lighting constant, plus srgb_to_linear — now lives
+// in render/art_direction.hpp, because the entity pass needs exactly the same
+// values and a second copy of a lighting model drifts. Pulled in unqualified
+// here so the call sites below read as they always did.
+using namespace art;
 
 /// Material palette, indexed by Voxel. Deliberately desaturated and cold: the
 /// derelict is dead metal and ice, so the only saturated colours in frame are
@@ -243,17 +213,13 @@ void Renderer::render(const VoxelWorld& world, const Camera& camera) {
     bgfx::touch(kMainView);
 
     const vec3 eye = camera.eye();
-    const f32 light_dir[4] = {-0.42f, -0.78f, -0.46f, 0.0f};
-    // x = distance fog starts, y = density. Exponential, so there is no onset
-    // plane sweeping across the deck as you walk.
-    const f32 fog_params[4] = {18.0f, 0.016f, 0.0f, 0.0f};
-    const f32 fog_color[4] = {kFogColor[0], kFogColor[1], kFogColor[2], 1.0f};
+    const std::array<f32, 4> fog_color = fog_color_rgba();
     const f32 eye_pos[4] = {eye.x, eye.y, eye.z, 0.0f};
 
     bgfx::setUniform(u_material_color_, material_colors_linear_.data(), 8);
-    bgfx::setUniform(u_light_dir_, light_dir);
-    bgfx::setUniform(u_fog_params_, fog_params);
-    bgfx::setUniform(u_fog_color_, fog_color);
+    bgfx::setUniform(u_light_dir_, kLightDir.data());
+    bgfx::setUniform(u_fog_params_, kFogParams.data());
+    bgfx::setUniform(u_fog_color_, fog_color.data());
     bgfx::setUniform(u_eye_pos_, eye_pos);
     bgfx::setUniform(u_ambient_sky_, kAmbientSky.data());
     bgfx::setUniform(u_ambient_ground_, kAmbientGround.data());

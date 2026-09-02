@@ -6,6 +6,7 @@
 #include "core/log.hpp"
 #include "generated/shaders/fs_entity.sc.bin.h"
 #include "generated/shaders/vs_entity.sc.bin.h"
+#include "render/art_direction.hpp"
 
 #include <bgfx/embedded_shader.h>
 
@@ -23,31 +24,12 @@ const bgfx::EmbeddedShader kEmbeddedShaders[] = {
     BGFX_EMBEDDED_SHADER_END(),
 };
 
-f32 srgb_to_linear(f32 c) {
-    return c <= 0.04045f ? c / 12.92f : std::pow((c + 0.055f) / 1.055f, 2.4f);
-}
-
-// --- art direction ---------------------------------------------------------
-// DUPLICATED from render/renderer.cpp, which is the wrong place for them to
-// live now that a second pass needs them. They are in an anonymous namespace
-// there, so there is no way to reference them from here without editing that
-// file. The values below must stay byte-identical to renderer.cpp's or enemies
-// will be lit differently from the world and read as pasted on — which is
-// exactly the drift a shared header prevents. See the note in the handover:
-// these want hoisting into src/render/art_direction.hpp and including from
-// both.
-
-constexpr std::array<f32, 4> kAmbientSky = {0.050f, 0.072f, 0.120f, 1.0f};
-constexpr std::array<f32, 4> kAmbientGround = {0.012f, 0.013f, 0.018f, 0.0f};
-constexpr std::array<f32, 4> kKeyColor = {1.0f, 0.94f, 0.85f, 1.05f};
-constexpr std::array<f32, 4> kRimColor = {0.16f, 0.28f, 0.50f, 0.10f};
-constexpr std::array<f32, 3> kFogColor = {0.020f, 0.028f, 0.048f};
-
-/// Direction the key light travels. Matches Renderer::render().
-constexpr std::array<f32, 4> kLightDir = {-0.42f, -0.78f, -0.46f, 0.0f};
-
-/// x = distance fog starts, y = density. Matches Renderer::render().
-constexpr std::array<f32, 4> kFogParams = {18.0f, 0.016f, 0.0f, 0.0f};
+// The lighting constants and srgb_to_linear were duplicated here byte-for-byte
+// from renderer.cpp, because they were private to that translation unit and
+// entities have to be lit by exactly the same model or they read as pasted onto
+// the world. They now live in render/art_direction.hpp and both passes include
+// it, so there is only one set of numbers to edit.
+using namespace art;
 
 // --- palette ---------------------------------------------------------------
 
