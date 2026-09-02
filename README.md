@@ -101,7 +101,9 @@ python3 web/serve.py            # serves build-web on http://localhost:8080
 > `Cross-Origin-Embedder-Policy` response headers. `web/serve.py` sets them,
 > which is the entire reason it exists rather than `python -m http.server`.
 > **GitHub Pages cannot set those headers.** Deploy to Cloudflare Pages,
-> Netlify, or anything else that lets you configure headers.
+> Netlify, or anything else that lets you configure headers. `web/_headers` is
+> the Cloudflare/Netlify form of the same two headers, and CI copies it into the
+> uploaded `driftfall-web` artifact, so that artifact is deploy-ready as-is.
 
 ## Controls
 
@@ -137,7 +139,9 @@ gating job runs in seconds on a headless runner.
 
 ## Performance budget
 
-These are targets, not aspirations, and CI is where they get enforced:
+These are the targets the design is built around. The debug HUD measures the
+live frame against them (`F3`), and `src/core/perf_budget.hpp` holds the
+constants:
 
 | Budget | Target | Why |
 |---|---|---|
@@ -146,6 +150,27 @@ These are targets, not aspirations, and CI is where they get enforced:
 | Draw calls | ≤ 300 | mobile tilers stall on state changes |
 | Resident memory | < 700 MB | iOS jetsams above this on older devices |
 | Thermal | steady state at minute 15 | phone games die at minute 12, not at 30 fps |
+
+**CI does not yet enforce any of them.** Be clear about what that means, because
+a budget nobody measures is a wish:
+
+- **Frame time, chunk remeshing, draw calls — not gated at all.** No CI job runs
+  the game or samples a frame. The one test that mentions these numbers,
+  `tests/test_frame_stats.cpp`, asserts that the budget constants equal the
+  values in this table. That is a typo guard on the HUD's thresholds — it would
+  catch someone fat-fingering `kDrawCalls`, and nothing else.
+- **Resident memory — gated, but barely.** `tests/test_mem_stats.cpp` checks
+  that the headless test process stays under 700 MB. That process holds no
+  sector and no GPU resources, so it only catches a catastrophic regression.
+- **Thermal — not gated, and cannot be here.** A 15-minute soak needs the real
+  device; it is an M6 task.
+
+What CI does enforce today is that the code is correct and builds everywhere it
+has to: the simulation suite on GCC / Clang / AppleClang, the same suite under
+ASan and UBSan, formatting, the native desktop client, and a WebAssembly build
+that has to produce a real `index.wasm` or the job fails. Making the frame-time
+budgets machine-checkable needs a headless capture harness that does not exist
+yet — until it does, this table is enforced by reading the HUD.
 
 Phones do not fail at low frame rates. They fail at *falling* frame rates,
 twelve minutes in, when the SoC throttles. Every architectural choice here —

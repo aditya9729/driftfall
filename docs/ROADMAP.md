@@ -16,7 +16,7 @@ Repo, Apache-2.0, CI, the headless simulation core.
 - [x] `voxel/` — chunk storage with uniform fast path, sparse damage
 - [x] `voxel/` — greedy mesher with cross-seam sampling and face ownership
 - [x] `game/` — wave director, active reload, build economy, run state machine
-- [x] 67 tests, CI on GCC/Clang/AppleClang + ASan/UBSan
+- [x] 101 tests, CI on GCC/Clang/AppleClang + ASan/UBSan
 - [x] Client shell: SDL3 window, bgfx init, camera, chunk upload, shaders
 
 **Proof:** `ctest` is green and the web job produces a `.wasm`.
@@ -59,8 +59,11 @@ Repo, Apache-2.0, CI, the headless simulation core.
 
 The milestone that decides whether the game is worth finishing.
 
-- [ ] Jolt Physics: character controller, gravity, collision against the voxel
-      world via a simplified proxy
+- [ ] Character controller: gravity and collision against the voxel world.
+      Jolt was the plan and has been dropped — the world is an axis-aligned
+      uniform grid, so a per-axis swept AABB does the job in a few hundred
+      headless, testable lines, where Jolt would have been a third heavyweight
+      dependency in df_game for wasm and iOS. See docs/ARCHITECTURE.md.
 - [x] Voxel raycast from the camera; the Salvage Rifle damages what it hits
 - [ ] Destruction VFX: chunk debris, impact sparks, damage glow
 - [ ] Active-reload UI — the window bar, on screen, readable at arm's length

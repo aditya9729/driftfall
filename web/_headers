@@ -1,0 +1,18 @@
+# Copyright 2026 Aditya Gudal
+# SPDX-License-Identifier: Apache-2.0
+#
+# Response headers for Cloudflare Pages and Netlify, which both read a file
+# named `_headers` from the root of the published directory.
+#
+# The web build uses WebAssembly threads. Threads need SharedArrayBuffer, and
+# browsers only expose SharedArrayBuffer to a cross-origin-isolated page — which
+# means these two headers. Without them the page loads and then dies at startup
+# on SharedArrayBuffer being undefined.
+#
+# These mirror what web/serve.py sends locally; if you change one, change both.
+# GitHub Pages cannot set response headers at all, which is why it is not a
+# deploy target for this build.
+
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp

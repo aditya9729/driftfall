@@ -93,6 +93,62 @@ jobs:
           find src tests -name '*.cpp' -o -name '*.hpp' \
             | xargs clang-format-18 --dry-run --Werror
 
+  # src/render/ and src/platform/ used to be compiled in CI only by the
+  # Emscripten job, so a change that broke the *desktop* build stayed invisible
+  # until someone built locally. This job is the one that notices.
+  #
+  # Note there is no DRIFTFALL_SHADERC here, unlike the web job. This is a
+  # native, non-cross-compiling build, so cmake/Shaders.cmake takes neither its
+  # DRIFTFALL_SHADERC branch nor its CMAKE_CROSSCOMPILING branch, and bgfx
+  # builds its own host shaderc (cmake/Dependencies.cmake leaves
+  # BGFX_BUILD_TOOLS ON whenever DRIFTFALL_SHADERC is unset).
+  client:
+    name: Desktop client (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: seanmiddleditch/gha-setup-ninja@v5
+
+      # Unlike the host-shaderc pass in the web job, this configure *does* pull
+      # in SDL3, which refuses to configure on Linux unless it can find X11 or
+      # Wayland development libraries. X11 is the cheaper of the two to satisfy:
+      # SDL3's check needs libx11-dev and libxext-dev, and the remaining -dev
+      # packages are what stop it silently dropping cursor/randr/xinput support.
+      # libgl1-mesa-dev and libx11-dev are additionally what bgfx.cmake's
+      # find_package(OpenGL)/find_package(X11) want.
+      - name: Install SDL3 and bgfx system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl1-mesa-dev \
+            libx11-dev \
+            libxext-dev \
+            libxrandr-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxfixes-dev \
+            libxss-dev \
+            libxkbcommon-dev
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-client -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DDRIFTFALL_BUILD_CLIENT=ON
+          -DDRIFTFALL_BUILD_TESTS=OFF
+          -DDRIFTFALL_WERROR=ON
+
+      - name: Build
+        run: cmake --build build-client
+
+      # A green build that produced no executable is the failure mode this
+      # whole job exists to rule out.
+      - name: Check the client executable was produced
+        run: |
+          set -euo pipefail
+          test -x build-client/driftfall
+          ls -la build-client/driftfall
+
   # The shipping target. Allowed to fail the build without blocking the
   # simulation gate while the graphics layer is still being brought up.
   web:
@@ -115,6 +171,18 @@ jobs:
           version: 3.1.64
           actions-cache-folder: emsdk-cache
 
+      # Building shaderc costs five minutes of every run, and its only input is
+      # the bgfx pin in cmake/Dependencies.cmake. Key the cache on that file, so
+      # it invalidates exactly when someone bumps the tag and not otherwise.
+      # hashFiles is deliberately over-broad here — any edit to Dependencies.cmake
+      # rebuilds — because over-invalidating costs five minutes and
+      # under-invalidating ships a shaderc built from a different bgfx.
+      - name: Cache the host-native shaderc
+        uses: actions/cache@v4
+        with:
+          path: build-host/_deps/bgfx-build/cmake/bgfx/shaderc
+          key: shaderc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cmake/Dependencies.cmake') }}
+
       # shaderc reads .sc files off the real filesystem, so it has to be a
       # host-native binary. Built under emcmake it becomes a shaderc.js that
       # runs in Emscripten's virtual filesystem and cannot open them.
@@ -123,10 +191,27 @@ jobs:
       # configure on Linux without X11 or Wayland development libraries, which
       # made building a shader compiler depend on the runner having a desktop
       # windowing stack installed.
+      #
+      # The guard is a runnability check rather than `if: cache-hit != 'true'`
+      # on purpose: a restored binary that will not execute (a cache written by
+      # an older runner image, a truncated entry) then falls through and gets
+      # rebuilt instead of failing the Configure step below.
       - name: Build a host-native shaderc
         run: |
-          cmake -S . -B build-host -G Ninja -DDRIFTFALL_HOST_TOOLS_ONLY=ON
-          cmake --build build-host --target shaderc
+          set -euo pipefail
+          shaderc=build-host/_deps/bgfx-build/cmake/bgfx/shaderc
+          if [ -x "$shaderc" ] && "$shaderc" --version; then
+            echo "Cache hit: reusing the shaderc above."
+          else
+            echo "No usable cached shaderc; building one."
+            rm -f "$shaderc"
+            cmake -S . -B build-host -G Ninja -DDRIFTFALL_HOST_TOOLS_ONLY=ON
+            cmake --build build-host --target shaderc
+          fi
+          # Whichever path ran, the Configure step is about to hand this path to
+          # DRIFTFALL_SHADERC. Fail here, where the reason is obvious.
+          test -x "$shaderc"
+          "$shaderc" --version
 
       - name: Configure
         run: >
@@ -139,15 +224,61 @@ jobs:
       - name: Build
         run: cmake --build build-web
 
+      # This step used to swallow every error with `|| true`, so the job went
+      # green whether or not a .wasm had ever been produced. That is the exact
+      # false confidence this pipeline exists to remove: if the build did not
+      # emit a playable page, the web job must be red.
       - name: Collect artifact
         run: |
+          set -euo pipefail
+
           mkdir -p dist
-          cp build-web/index.html build-web/index.js build-web/index.wasm dist/ 2>/dev/null || true
-          cp -r build-web/*.worker.js dist/ 2>/dev/null || true
+          missing=0
+          for f in index.html index.js index.wasm; do
+            if [ ! -f "build-web/$f" ]; then
+              echo "::error::the web build did not produce build-web/$f"
+              missing=1
+            else
+              cp "build-web/$f" dist/
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Contents of build-web:"
+            ls -la build-web || true
+            exit 1
+          fi
+
+          # Emscripten only emits a worker script for some pthread
+          # configurations, so its absence is a warning, not a failure.
+          shopt -s nullglob
+          workers=(build-web/*.worker.js)
+          shopt -u nullglob
+          if [ ${#workers[@]} -eq 0 ]; then
+            echo "::warning::no *.worker.js in build-web; wasm threads may not start"
+          else
+            cp "${workers[@]}" dist/
+          fi
+
+          # Deploy-ready: Cloudflare Pages and Netlify both read `_headers` from
+          # the root of the published directory, and the COOP/COEP headers in it
+          # are what make SharedArrayBuffer — and therefore threads — available.
+          cp web/_headers dist/
+
+          # A link that failed but still emitted a stub leaves a wasm of a few
+          # hundred bytes. A real Release build of this target is ~1.4 MB, so
+          # 256 KiB is far below anything genuine and far above anything broken.
+          bytes=$(stat -c%s dist/index.wasm)
+          floor=262144
+          if [ "$bytes" -lt "$floor" ]; then
+            echo "::error::index.wasm is only ${bytes} bytes (floor ${floor}); the link did not produce a real module"
+            exit 1
+          fi
+          echo "index.wasm: ${bytes} bytes"
+
           ls -la dist
 
       - uses: actions/upload-artifact@v4
         with:
           name: driftfall-web
           path: dist
-          if-no-files-found: warn
+          if-no-files-found: error
