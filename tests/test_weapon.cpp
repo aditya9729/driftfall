@@ -13,7 +13,12 @@ namespace {
 /// the test exercises the same code path the game does.
 void advance_reload_to(Weapon& weapon, f32 fraction) {
     const f32 step = 1.0f / 60.0f;
-    while (weapon.reload_progress() < fraction && weapon.state() == ReloadState::Reloading) {
+    // Loop until the reload is *finished*, not while it is Reloading: a jammed
+    // reload is still running, and testing against the narrower state would
+    // make this helper silently return without advancing once a jam is in
+    // play — leaving the caller's later assertions passing for the wrong
+    // reason.
+    while (weapon.reload_progress() < fraction && weapon.state() != ReloadState::Ready) {
         weapon.tick(step);
     }
 }
@@ -103,7 +108,16 @@ TEST_CASE("tapping too early jams and stretches the reload") {
 
     weapon.tick(0.05f);  // barely started
     CHECK(weapon.tap_reload() == ReloadResult::Jammed);
-    CHECK(weapon.state() == ReloadState::Reloading);
+
+    // The jam is observable. Without this the HUD cannot distinguish a jammed
+    // reload from a slow one, which is the whole feedback the mechanic runs on.
+    CHECK(weapon.state() == ReloadState::Jammed);
+
+    // A jammed weapon cannot fire and cannot start a fresh reload to escape
+    // the penalty — that is what makes the stretch a punishment.
+    CHECK(weapon.fire() == 0.0f);
+    weapon.begin_reload();
+    CHECK(weapon.state() == ReloadState::Jammed);
 
     // It still finishes — a jam is a punishment, never a dead end.
     f32 elapsed = 0.05f;

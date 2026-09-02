@@ -120,6 +120,13 @@ ReloadResult Weapon::tap_reload() {
 
     // Missed. The reload does not restart — it stretches. Punishing, but never
     // unrecoverable, and the extra time is visible on the same bar.
+    //
+    // The state changes too, and that is not cosmetic. Until it did, a jam was
+    // invisible: state_ stayed Reloading, so Weapon::state() could never return
+    // Jammed, the HUD could not tell a jammed reload from a slow one, and the
+    // debug overlay's "JAMMED" branch was unreachable. An instrument that
+    // cannot report the failure it is named after is worse than no instrument.
+    state_ = ReloadState::Jammed;
     reload_target_ = stats_.reload_seconds + stats_.jam_penalty;
     return ReloadResult::Jammed;
 }
