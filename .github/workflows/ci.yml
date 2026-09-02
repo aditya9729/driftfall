@@ -102,6 +102,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: seanmiddleditch/gha-setup-ninja@v5
 
+      # bgfx.cmake calls find_package(X11) and find_package(OpenGL) on Linux
+      # even when only its tools are wanted, so the host pass needs these two.
+      # It does *not* need the wider set SDL3 asks for — DRIFTFALL_HOST_TOOLS_ONLY
+      # below keeps SDL3 out of that configure entirely.
+      - name: Install system dependencies for host shaderc
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libx11-dev
+
       - name: Set up Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:
