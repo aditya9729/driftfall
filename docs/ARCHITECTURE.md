@@ -275,8 +275,14 @@ a voxel mesher is silent until it is a crash on someone's phone.
 
 - **WebGPU vs WebGL2.** bgfx supports both. WebGL2 is the safe floor today;
   measure WebGPU on the target devices before switching.
-- **Physics.** Jolt is the intended choice for M2 (character controller,
-  projectiles). Voxels get a simplified collision proxy, never per-voxel bodies.
+- **Physics.** Jolt was the intended choice for M2 and has been dropped. The
+  world is an axis-aligned uniform grid, so the character controller is a
+  per-axis swept AABB over voxels — a few hundred lines in `game/physics.cpp`,
+  headless and unit-tested. Jolt would have meant a third heavyweight
+  dependency in `df_game`, which today links only glm and EnTT and must build
+  for wasm and iOS, in exchange for solving a problem the grid solves for free.
+  Revisit only if rigid-body debris or ragdolls become a requirement; neither
+  is on the roadmap. Voxels still never get per-voxel bodies.
 - **Audio.** miniaudio at M5. Nothing about the architecture depends on it yet.
 - **Save format.** Sectors are bounded, so a whole-sector snapshot is viable.
   Prefer replaying the seed + input stream if determinism holds up.
