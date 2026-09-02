@@ -45,9 +45,14 @@ public:
     /// field a Bulwark follows is not necessarily the one a Skitter follows.
     void rebuild(const VoxelWorld& world, ivec3 goal, vec3 half_extents);
 
-    /// Unit direction toward the goal from a world position, or a zero vector
-    /// when the position is outside the field or in a cell the sweep never
-    /// reached. Callers must handle the zero case rather than normalising it.
+    /// Unit direction toward the goal from a world position, or a zero vector.
+    ///
+    /// Zero means one of three things, and the third is easy to miss: the
+    /// position is outside the field, the sweep never reached its cell, or it
+    /// *is* the goal cell, which has nowhere downhill to point. The obvious
+    /// reading of zero as "unreachable" is therefore wrong at exactly the
+    /// moment an enemy arrives. Use reachable() to tell them apart, and never
+    /// normalise the result.
     [[nodiscard]] vec3 direction_at(vec3 world_position) const;
 
     /// Whether the goal is reachable from here at all. This is what lets Sim
@@ -73,6 +78,14 @@ private:
     ivec3 cells_{0};
     ivec3 world_voxels_{0};
     /// Breadth-first distance from the goal, in cells. -1 is unreachable.
+    ///
+    /// One value per cell, so a cell carries a single connected group of
+    /// standable positions. Where a cell contains two pockets separated by
+    /// geometry — a player-placed barricade cutting a cell in half — only the
+    /// larger survives, and a body in the discarded pocket is steered toward a
+    /// neighbour it cannot reach from there. That degrades to local steering
+    /// rather than a hang, because a pocket is at most half a cell and cannot
+    /// enlarge the reachable set. The proper fix is one node per (cell, group).
     std::vector<i32> distance_;
     usize reachable_count_ = 0;
 };

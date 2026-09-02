@@ -150,11 +150,29 @@ void generate_test_sector(VoxelWorld& world, u32 seed) {
         }
     }
 
-    // Doorways: a 3-wide, 3-tall gap at the midpoint of each wall segment.
+    // Doorways: a 3-wide, 4-tall gap at the midpoint of each wall segment.
+    //
+    // Four tall, not three, and the extra voxel is load-bearing. The player
+    // body is 3.6 voxels tall (half-extent 1.8, at 0.5 m per voxel), so a
+    // three-voxel opening is a wall with a window in it. Nobody noticed while
+    // the player free-flew through geometry, but the interior walls run the
+    // full width and depth of the sector — they are complete partitions — so
+    // the moment anything collides, the sector becomes a set of sealed boxes.
+    //
+    // Measured, before this changed: a navigation sweep from the sector centre
+    // reached 36 cells, exactly the goal's own room, and the origin where
+    // enemies spawn was unreachable. Enemies would have pinned against the
+    // first wall, enemies_remaining() would never have reached zero, and the
+    // Assault phase would have hung — deterministically, in the headless
+    // tests. With the fourth voxel it reaches 3132 of 3136 ground cells.
+    //
+    // Widening the door rather than shrinking the player: a doorway a body
+    // cannot fit through is a generator bug, not a design constraint, and the
+    // body size is fixed by the metre scale rather than by convenience.
     auto punch_door = [&](i32 cx, i32 cz) {
         for (i32 dx = -1; dx <= 1; ++dx) {
             for (i32 dz = -1; dz <= 1; ++dz) {
-                for (i32 y = 1; y <= 3; ++y) world.set(cx + dx, y, cz + dz, Voxel::Empty);
+                for (i32 y = 1; y <= 4; ++y) world.set(cx + dx, y, cz + dz, Voxel::Empty);
             }
         }
     };
