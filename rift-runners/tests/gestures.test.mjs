@@ -1,0 +1,17 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {Pinch,HandMapper,describeHand}from'../src/gestures.js';
+function points(x=.5,y=.5,ratio=1){const p=Array.from({length:21},()=>({x,y,z:0}));p[0]={x,y:y+.1};p[5]={x:x-.05,y:y+.02};p[9]={x,y};p[17]={x:x+.05,y:y+.02};p[4]={x:x-.03,y:y-.08};p[8]={x:x-.03+ratio*.1,y:y-.08};return p;}
+function result(x=.5,ratio=1){return{landmarks:[points(x,.5,ratio)],handedness:[[{categoryName:'Right',score:.99}]]};}
+function calibrated(mode='one'){const m=new HandMapper({mode});for(let i=0;i<12;i++)m.ingest(result(),i*50);assert.ok(m.calibrate(550));return m;}
+test('pinch uses dwell and separate engage/release thresholds',()=>{const p=new Pinch();assert.equal(p.update(.2,0),false);assert.equal(p.update(.2,70),true);assert.equal(p.update(.42,100),true);assert.equal(p.update(.6,130),false);});
+test('invalid or missing pinch always releases',()=>{const p=new Pinch();p.update(.2,0);p.update(.2,80);assert.equal(p.update(NaN,90),false);});
+test('malformed or low-confidence landmarks are ignored',()=>{assert.equal(describeHand([], 'x'),null);assert.equal(describeHand(points(),'x',.5),null);const p=points();p[8].x=Infinity;assert.equal(describeHand(p),null);});
+test('no firing before explicit calibration',()=>{const m=new HandMapper();for(let i=0;i<12;i++)m.ingest(result(.5,.2),i*50);assert.equal(m.input(550).fire,false);});
+test('calibration needs enough fresh stable frames',()=>{const m=new HandMapper();m.ingest(result(),0);assert.equal(m.calibrate(0),false);for(let i=0;i<12;i++)m.ingest(result(),i*50);assert.equal(m.canCalibrate(2000),false);assert.equal(m.calibrate(550),true);});
+test('unsteady calibration is rejected',()=>{const m=new HandMapper();for(let i=0;i<12;i++)m.ingest(result(i%2?.3:.7),i*50);assert.equal(m.canCalibrate(550),false);});
+test('mirrored screen-right movement steers right',()=>{const m=calibrated();for(let i=0;i<10;i++)m.ingest(result(.38),600+i*50);assert.ok(m.input(1050).x>0);});
+test('one hand can steer and shoot simultaneously',()=>{const m=calibrated();for(let i=0;i<10;i++)m.ingest(result(.42,.2),600+i*50);assert.ok(m.input(1050).x>0);assert.equal(m.input(1050).fire,true);});
+test('stale sample releases fire before auto-pause deadline',()=>{const m=calibrated();m.ingest(result(.5,.2),600);m.ingest(result(.5,.2),700);assert.equal(m.input(700).fire,true);assert.equal(m.input(901).fire,false);assert.equal(m.lost(901),false);assert.equal(m.lost(1400),true);});
+test('missing hand immediately releases fire even within grace period',()=>{const m=calibrated();m.ingest(result(.5,.2),600);m.ingest(result(.5,.2),700);m.ingest({landmarks:[]},750);assert.equal(m.input(750).fire,false);});
+test('two-hand roles remain stable when result ordering swaps',()=>{const m=new HandMapper({mode:'two'});const r={landmarks:[points(.7),points(.3)],handedness:[[{categoryName:'Right'}],[{categoryName:'Left'}]]};for(let i=0;i<12;i++)m.ingest(r,i*50);assert.ok(m.calibrate(550));const label=m.pilotLabel;m.ingest({landmarks:[r.landmarks[1],r.landmarks[0]],handedness:[r.handedness[1],r.handedness[0]]},600);assert.equal(m.pilotLabel,label);assert.ok(Math.abs(m.input(600).x)<.001);});
+test('two-hand mode waits for both hands; swap changes role assignment',()=>{const m=new HandMapper({mode:'two'});assert.equal(m.ingest(result(),0),false);const s=new HandMapper({mode:'two',swap:true});s.ingest({landmarks:[points(.7),points(.3)],handedness:[[{categoryName:'A'}],[{categoryName:'B'}]]},0);assert.equal(s.pilotLabel,'B');});

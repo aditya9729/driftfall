@@ -1,0 +1,2 @@
+# Test-only. The game has no npm or Python runtime dependencies.
+playwright==1.57.0

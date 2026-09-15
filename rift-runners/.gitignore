@@ -1,0 +1,7 @@
+# Local test evidence is generated on demand, not game runtime data.
+qa-*/
+__pycache__/
+*.pyc
+rift-runners/qa-output/
+rift-runners/qa-compatibility/
+rift-runners/qa-terminal/
