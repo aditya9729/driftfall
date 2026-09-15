@@ -51,6 +51,7 @@
     <div class="hud-top"><div><span class="tiny-label">SCORE</span><strong id="score">000000</strong><span id="combo" class="combo">×1</span></div><div class="course-progress"><span id="sector-name">THE FRACTURE</span><div class="progress-track"><div id="progress-fill"></div></div></div><div class="timer-box"><span class="tiny-label" id="timer-label">FLIGHT TIME</span><strong id="timer">00:00.0</strong><button id="pause-button" class="mini-button" aria-label="Pause flight">Ⅱ</button></div></div>
     <div id="target" aria-hidden="true"><i></i><span></span></div>
     <div id="next-gate" aria-hidden="true">◇</div>
+    <div id="objective" class="objective"><span class="tiny-label">OBJECTIVE</span><strong id="objective-text">DOWN THE LATTICE 0 / 0</strong><div class="objective-track"><div id="objective-fill"></div></div></div>
     <div id="callout" aria-live="polite"></div>
     <div id="countdown" hidden aria-live="assertive">3</div>
     <div class="hud-bottom"><div class="velocity"><span class="tiny-label">VELOCITY</span><strong id="speed">000</strong><span class="units">KM/H</span><div id="boost-label">SHIFT / BOOST</div></div><div class="ship-status"><div><span>HULL</span><div class="meter hull"><div id="health-fill"></div></div><b id="health-number">100</b></div><div><span>BOOST</span><div class="meter"><div id="boost-fill"></div></div></div><div><span>HEAT</span><div class="meter heat"><div id="heat-fill"></div></div><b id="heat-label">READY</b></div></div><div class="run-tally"><span id="gate-tally">0 GATES</span><span id="kill-tally">0 MACHINES</span><span id="ghost-gap">SOLO FLIGHT</span></div></div>
@@ -127,11 +128,22 @@
   <dialog id="help-dialog" aria-labelledby="help-title">
     <button id="close-help" class="close-dialog" aria-label="Close controls">×</button>
     <div class="eyebrow">FLIGHT MANUAL / 001</div><h2 id="help-title">LESS THINKING.<br><em>MORE FLYING.</em></h2>
-    <div class="control-guide"><div><b>01 / STEER</b><p>Move your palm a little left, right, up or down. Or use WASD / arrow keys. On touchscreens, drag the world.</p></div><div><b>02 / SHOOT</b><p>Pinch thumb + index and hold. Or hold Space / click / FIRE. Aim at orange blocks and red machine eyes. Watch weapon heat.</p></div><div><b>03 / FLOW</b><p>Fly through cyan gates to build your chain. Hold Shift / BOOST for speed. In two-hand mode, pinch the steering hand to boost.</p></div></div>
+    <div class="control-guide"><div><b>01 / STEER</b><p>Move your palm a little left, right, up or down. Or use WASD / arrow keys. On touchscreens, drag the world.</p></div><div><b>02 / SHOOT</b><p>Pinch thumb + index and hold. Or hold Space / click / FIRE. Your targets are THE LATTICE: fast SEEKERS (2 hits) and armoured PYLONS (3 hits). Watch weapon heat.</p></div><div><b>03 / FLOW</b><p>Fly through cyan gates to build your chain. Hold Shift / BOOST for speed. In two-hand mode, pinch the steering hand to boost.</p></div></div>
     <p class="muted">Two hands: screen-left pilots, screen-right aims and fires. Roles lock during setup. Press R to recenter. If tracking disappears, firing stops and the game pauses. Support your elbows and take breaks.</p>
     <label class="check-label"><input id="reduced-motion" type="checkbox"> Reduced motion · no shake or speed streaks</label>
     <label class="check-label"><input id="show-preview" type="checkbox"> Show webcam image during flight (skeleton is always local)</label>
     <label class="sensitivity-label">HAND SENSITIVITY <input id="sensitivity" type="range" min="0.6" max="1.5" step="0.1" value="1"></label>
+    <div class="briefing">
+      <div class="deck-heading"><span>MISSION BRIEFING</span><span>KNOW YOUR TARGETS</span></div>
+      <p>You fly the rift as a <b>Rift Runner</b>. <b>THE LATTICE</b> — a derelict machine swarm — is holding it open. Break it.</p>
+      <ul class="codex">
+        <li><b class="seeker">SEEKERS</b><span>fast drones · 2 hits · 250 pts</span></li>
+        <li><b class="pylon">PYLONS</b><span>armoured hulks · 3 hits · 100 pts</span></li>
+        <li><b class="cell">CELLS</b><span>fly through · repairs hull + boost</span></li>
+        <li><b class="gate">GATES</b><span>thread them · chains your combo</span></li>
+      </ul>
+      <p class="briefing-foot">Waves are called out before they reach you. Clear the objective for a <b>+1000</b> bonus.</p>
+    </div>
     <div class="help-footer"><button id="clear-data" class="text-button">DELETE LOCAL GHOSTS</button><span>F3 · PERFORMANCE HUD</span></div>
     <p class="muted">Ghost races are local or file-shared replays, not live multiplayer. Scores are not server-verified. Only flight positions are saved; no camera data.</p>
   </dialog>
