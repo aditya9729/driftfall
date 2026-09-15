@@ -22,3 +22,27 @@ html[data-renderer="Canvas2D compatibility"] dialog::backdrop{backdrop-filter:no
 .audio-mixer input{width:100%;min-height:32px;margin:0 0 10px;accent-color:var(--lime);cursor:pointer;touch-action:pan-y}
 .audio-status{font:9px/1.7 var(--mono);color:var(--lime);letter-spacing:.7px;min-height:30px}
 @media(max-width:600px){.header-actions{gap:9px}.masthead{padding-left:5%;padding-right:5%}.track-card strong{font-size:18px}}
+/* --- Phase 1: hostile identity, wave callouts and the run objective --- */
+.objective{position:absolute;top:152px;left:5.4%;width:212px}
+.objective strong{display:block;font:11px var(--mono);letter-spacing:1.3px;color:var(--ink)}
+.objective-track{height:2px;background:#b4d2b62b;margin-top:8px}
+.objective-track>div{height:100%;width:0;background:var(--orange);box-shadow:0 0 10px #ffad7844;transition:width .2s linear}
+.objective.complete strong{color:var(--lime)}
+.objective.complete .objective-track>div{background:var(--lime);box-shadow:0 0 10px #d9ff8a55}
+#callout.warn{color:var(--orange)}
+#callout.good{color:var(--lime)}
+.briefing{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.briefing p{margin:0 0 11px;font-size:12px;line-height:1.6;color:#b3c4b8}
+.briefing b{color:var(--ink)}
+.codex{list-style:none;margin:0 0 11px;padding:0;display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.codex li{display:flex;flex-direction:column;gap:5px;padding:10px 11px;background:#112020af;border:1px solid #b9dbc12b}
+.codex b{font:700 10px var(--mono);letter-spacing:1.1px}
+.codex span{font:10px var(--sans);color:#a4b7ac;line-height:1.45}
+.codex .seeker{color:var(--orange)}
+.codex .pylon{color:#b0d8cc}
+.codex .cell{color:var(--lime)}
+.codex .gate{color:#c5f3e2}
+.briefing-foot{font:9px var(--mono)!important;letter-spacing:.8px;color:#8fa497!important}
+/* Mobile deck is already tight: drop the briefing, keep the in-flight objective. */
+@media(max-width:600px){.codex{grid-template-columns:1fr}.objective{top:136px;left:6%;width:150px}.objective strong{font-size:9px;letter-spacing:.7px}.objective .tiny-label{margin-bottom:4px}}
+@media(max-height:680px) and (max-width:600px){.objective{display:none}}

@@ -5,6 +5,10 @@ export const RULESET = 1;
 export const STEP = 1 / 120;
 export const COURSE_LENGTH = 2100;
 export const MODES = Object.freeze(['race', 'swarm', 'daily']);
+// The Lattice: the derelict machine swarm that keeps the rift open.
+export const ENEMY_NAMES = Object.freeze({ drone: 'SEEKER', block: 'PYLON', cell: 'CELL' });
+// Hostiles are announced in groups of this many gate clusters.
+export const WAVE_GROUP = 4;
 export const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 export const lerp = (a, b, t) => a + (b - a) * t;
 export const finite = (n, fallback = 0) => Number.isFinite(n) ? n : fallback;
@@ -42,19 +46,36 @@ export function course(seed, mode = 'race') {
     gates.push({ id: id++, x, y, z, radius: 2.65, passed: false, collected: false, perfect: false });
     // Early flight teaches gates before introducing hazards.
     if (i < 2) continue;
+    const wave = Math.floor((i - 2) / WAVE_GROUP);
     const count = mode === 'swarm' ? 4 : (i % 3 === 0 ? 3 : 2);
     for (let j = 0; j < count; j++) {
       const type = (j === 0 || rng() < .4) ? 'drone' : 'block';
       const ex = clamp(x + (rng() - .5) * 11, -8.1, 8.1);
       const ey = clamp(y + (rng() - .5) * 5.5, -3.8, 3.8);
-      entities.push({ id: id++, type, x: ex, y: ey, z: z + 17 + j * 5,
+      entities.push({ id: id++, type, wave, x: ex, y: ey, z: z + 17 + j * 5,
         size: type === 'drone' ? .8 : 1.15, hp: type === 'drone' ? 2 : 3,
         dead: false, collided: false });
     }
-    if (i % 4 === 0) entities.push({ id: id++, type: 'cell', x: -x * .65, y: -y * .8,
+    if (i % 4 === 0) entities.push({ id: id++, type: 'cell', wave, x: -x * .65, y: -y * .8,
       z: z + 28, size: .65, hp: 1, dead: false, collided: false });
   }
-  return { length, gates, entities };
+  // Waves are grouped from the layout that already exists. This consumes no extra
+  // rng draws, so every seeded course - and every saved ghost - is unchanged.
+  const grouped = [];
+  for (const e of entities) {
+    if (e.type === 'cell') continue;
+    const w = grouped[e.wave] || (grouped[e.wave] = { index: e.wave, z: e.z, count: 0, seekers: 0, pylons: 0 });
+    w.z = Math.min(w.z, e.z);
+    w.count++;
+    if (e.type === 'drone') w.seekers++; else w.pylons++;
+  }
+  // Announce a wave roughly one gate-spacing before its first hostile.
+  const waves = grouped.filter(Boolean).map(w => ({ ...w, z: Math.max(0, w.z - 46) }));
+  const hostileTotal = waves.reduce((n, w) => n + w.count, 0);
+  // Reachable in a decent run, so the reward actually lands; capped for swarm's
+  // much denser course.
+  const objectiveTarget = Math.min(40, Math.max(3, Math.round(hostileTotal * .3)));
+  return { length, gates, entities, waves, hostileTotal, objectiveTarget };
 }
 // Slab-based segment/AABB intersection catches fast shots and thin blocks.
 export function segmentBox(a, b, center, half) {
@@ -85,6 +106,7 @@ export class Run {
     this.bullets = []; this.events = []; this.samples = [];
     this.cooldown = 0; this.invulnerable = 0; this.sampleAt = 0;
     this.status = 'running'; this.boosting = false; this.tick = 0;
+    this.waveIndex = -1; this.objectiveDone = false;
   }
   emit(type, data = {}) { this.events.push({ type, t: this.elapsed, ...data }); }
   damage(amount, entity) {
@@ -111,6 +133,13 @@ export class Run {
     this.energy = clamp(this.energy + (this.boosting ? -29 : 13) * dt, 0, 100);
     this.speed = lerp(this.speed, this.boosting ? 48 : 28, 1 - Math.exp(-2.7 * dt));
     this.distance += this.speed * dt;
+    // Announce each hostile wave exactly once, before it is in weapons range.
+    // A loop, not an if: a boosting run can cross more than one marker per step.
+    while (this.waveIndex + 1 < this.waves.length && this.distance >= this.waves[this.waveIndex + 1].z) {
+      const w = this.waves[++this.waveIndex];
+      this.emit('wave', { index: w.index, total: this.waves.length,
+        count: w.count, seekers: w.seekers, pylons: w.pylons });
+    }
     this.invulnerable = Math.max(0, this.invulnerable - dt);
     this.cooldown = Math.max(0, this.cooldown - dt);
     this.heat = Math.max(0, this.heat - .3 * dt);
@@ -152,6 +181,10 @@ export class Run {
           hit.dead = true; this.kills++; this.score += hit.type === 'drone' ? 250 : 100;
           this.energy = Math.min(100, this.energy + 4);
           this.emit('destroy', { x: hit.x, y: hit.y, z: hit.z, kind: hit.type });
+          if (!this.objectiveDone && this.kills >= this.objectiveTarget) {
+            this.objectiveDone = true; this.score += 1000;
+            this.emit('objective', { target: this.objectiveTarget });
+          }
         }
       }
     }
@@ -202,6 +235,9 @@ export class Run {
       distance: this.distance, length: this.length, player: { ...this.player }, speed: this.speed,
       health: this.health, energy: this.energy, heat: this.heat, score: this.score,
       gates: this.gateCount, kills: this.kills, shots: this.shots, combo: this.combo,
+      wave: { current: this.waveIndex + 1, total: this.waves.length },
+      objective: { target: this.objectiveTarget,
+        progress: Math.min(this.kills, this.objectiveTarget), done: this.objectiveDone },
       nextGate: next ? { x: next.x, y: next.y, z: next.z } : null };
   }
 }

@@ -278,11 +278,15 @@ function updateHud(now){
   $('speed').textContent=String(Math.round(run.speed*7.2)).padStart(3,'0');$('health-number').textContent=String(run.health);
   $('health-fill').style.width=`${run.health}%`;$('boost-fill').style.width=`${run.energy}%`;$('heat-fill').style.width=`${run.heat*100}%`;
   $('heat-label').textContent=run.overheated?'COOLING':'READY';
-  $('gate-tally').textContent=`${run.gateCount} GATES`;$('kill-tally').textContent=`${run.kills} MACHINES`;
+  $('gate-tally').textContent=`${run.gateCount} GATES`;$('kill-tally').textContent=`${run.kills} LATTICE DOWN`;
+  const objTarget=run.objectiveTarget||0,objDone=Math.min(run.kills,objTarget);
+  $('objective-text').textContent=run.objectiveDone?`OBJECTIVE CLEAR · ${objTarget} DOWN`:`DOWN THE LATTICE ${objDone} / ${objTarget}`;
+  $('objective-fill').style.width=`${objTarget?objDone/objTarget*100:0}%`;
+  $('objective').classList.toggle('complete',Boolean(run.objectiveDone));
   $('progress-fill').style.width=`${clamp(mode==='swarm'?run.elapsed/90:run.distance/run.length,0,1)*100}%`;
   $('sector-name').textContent=BIOMES[Math.min(2,Math.floor(run.distance/700))].name;
   const g=ghostAt(ghost,run.elapsed);$('ghost-gap').textContent=g?`${Math.abs(Math.round(run.distance-g.distance))} M ${run.distance>=g.distance?'AHEAD OF':'BEHIND'} GHOST`:'SOLO FLIGHT';
-  if(now>calloutUntil)$('callout').textContent='';
+  if(now>calloutUntil){$('callout').textContent='';$('callout').classList.remove('warn','good');}
   if(!$('diagnostics').hidden)$('diagnostics').textContent=JSON.stringify({build:'0.1.1-music',...renderer?.stats,input:inputMode,handInferenceMs:+inferenceMs.toFixed(1),camera:camera.active?'on':'off',simulationHz:120,entities:run.entities.length,shots:run.shots},null,2);
 }
 function frame(now){
@@ -301,7 +305,25 @@ function frame(now){
     let steps=0;while(accumulator>=STEP&&steps<12&&run.status==='running'){run.step(activeInput,STEP);accumulator-=STEP;steps++;}
     audio.setScene('playing',run.boosting?1:Math.min(.65,run.distance/run.length*.6));
     const events=run.drainEvents();renderer.effects(events,run);audio.events(events);
-    for(const e of events){if(e.type==='gate'){$('callout').textContent=e.perfect?`PERFECT LINE · ×${e.combo}`:`GATE CHAIN · ×${e.combo}`;calloutUntil=now+1000;}if(e.type==='overheat'){$('callout').textContent='COOLING DOWN';calloutUntil=now+1100;}}
+    for(const e of events){
+      if(e.type==='gate'){$('callout').textContent=e.perfect?`PERFECT LINE · ×${e.combo}`:`GATE CHAIN · ×${e.combo}`;calloutUntil=now+1000;}
+      if(e.type==='overheat'){$('callout').textContent='COOLING DOWN';calloutUntil=now+1100;}
+      if(e.type==='wave'){
+        const parts=[];
+        if(e.seekers)parts.push(`${e.seekers} SEEKER${e.seekers>1?'S':''}`);
+        if(e.pylons)parts.push(`${e.pylons} PYLON${e.pylons>1?'S':''}`);
+        // The first wave also teaches the fire control, in context.
+        const teach=e.index===0?(inputMode==='hands'?' · PINCH TO FIRE':' · SPACE TO FIRE'):'';
+        $('callout').textContent=`⚠ WAVE ${e.index+1}/${e.total} · ${parts.join(' + ')} INBOUND${teach}`;
+        $('callout').classList.add('warn');calloutUntil=now+(e.index===0?2400:1500);
+        audio.tone(196,.16,.03,'sawtooth',150);
+      }
+      if(e.type==='objective'){
+        $('callout').textContent=`OBJECTIVE CLEAR · ${e.target} DOWN · +1000`;
+        $('callout').classList.add('good');calloutUntil=now+2000;
+        audio.tone(660,.22,.04,'triangle',990);
+      }
+    }
     if(run.status!=='running')finish();
   }
   // Keep capture responsive while a modal covers the scene. Drawing through
