@@ -1,0 +1,143 @@
+<!doctype html>
+<!-- Copyright 2026 Aditya Gudal. SPDX-License-Identifier: Apache-2.0 -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#091316">
+  <meta name="description" content="Your hands are the cockpit. Fly the fractured belt, blast the swarm, and race your ghost. A camera-optional arcade game.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net https://storage.googleapis.com; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <title>DRIFTFALL — Rift Runners</title>
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <canvas id="world" aria-label="Three-dimensional space flight course. Use the menu to begin." tabindex="0"></canvas>
+  <div class="grain" aria-hidden="true"></div>
+  <header class="masthead">
+    <a class="wordmark" href="./" aria-label="DRIFTFALL home"><span class="brand-mark" aria-hidden="true">◈</span> DRIFTFALL<span class="wordmark-sub">RIFT RUNNERS</span></a>
+    <div class="header-actions">
+      <span class="build-tag">FLIGHT TEST / 0.1.1</span>
+      <button id="sound" class="icon-button" aria-pressed="false" aria-label="Enable game sound">SOUND OFF <span aria-hidden="true">♪</span></button>
+      <button id="audio-settings" class="icon-button" aria-label="Music and sound settings" aria-haspopup="dialog">MIX <span aria-hidden="true">≋</span></button>
+      <button id="help" class="icon-button" aria-label="Controls and settings">HOW TO FLY <span aria-hidden="true">↗</span></button>
+    </div>
+  </header>
+
+  <main id="menu">
+    <section class="hero">
+      <div class="eyebrow"><span class="status-dot"></span> THE BELT IS CALLING</div>
+      <h1>NO CONTROLLER.<br><em>JUST INSTINCT.</em></h1>
+      <p class="hero-copy">Thread the gates. Break the swarm.<br>Your hands are the cockpit.</p>
+      <div class="launch-actions">
+        <button id="play-hands" class="button primary"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12V5a1.5 1.5 0 0 1 3 0v5-6a1.5 1.5 0 0 1 3 0v6-4a1.5 1.5 0 0 1 3 0v6-2a1.5 1.5 0 0 1 3 0v5c0 5-3 7-7 7-3 0-5-2-7-5l-2-3a1.5 1.5 0 0 1 2-2l3 3"/></svg> FLY WITH HANDS <span>↗</span></button>
+        <button id="play-keyboard" class="button secondary">KEYBOARD / TOUCH <span>→</span></button>
+      </div>
+      <p class="privacy-note"><span aria-hidden="true">◇</span> Camera optional. Always your choice.</p>
+    </section>
+    <div class="world-caption" aria-hidden="true"><span>SECTOR 01 — THE FRACTURE</span><strong>WELCOME TO<br>THE IN-BETWEEN.</strong><div class="caption-line"></div><span>03 WORLDS &nbsp; / &nbsp; 01 WAY THROUGH</span></div>
+    <section class="flight-deck" aria-label="Choose your flight">
+      <div class="deck-heading"><span>CHOOSE YOUR FLIGHT</span><span id="record-hint">NO ACCOUNT. JUST ONE MORE RUN.</span></div>
+      <div class="modes" role="group" aria-label="Game mode">
+        <button class="mode selected" data-mode="race" aria-pressed="true"><span class="mode-icon orbit-icon" aria-hidden="true">◎</span><span><strong>RIFT RUN</strong><small>Chase the gates. Race your ghost.</small></span><span class="mode-number">01</span></button>
+        <button class="mode" data-mode="swarm" aria-pressed="false"><span class="mode-icon" aria-hidden="true">⌁</span><span><strong>SWARM RUN</strong><small>90 seconds. Make every shot count.</small></span><span class="mode-number">02</span></button>
+        <button class="mode" data-mode="daily" aria-pressed="false"><span class="mode-icon" aria-hidden="true">✳</span><span><strong>DAILY RIFT</strong><small>A new course. The same sky for all.</small></span><span class="mode-number">03</span></button>
+      </div>
+      <div class="deck-footer"><label class="seed-label">COURSE <input id="seed" aria-label="Course seed" value="NEBULA-01" maxlength="32" spellcheck="false" autocomplete="off"></label><div><button id="import-ghost" class="text-button">LOAD A FRIEND'S GHOST ↗</button><button id="share-course" class="text-button">SHARE COURSE ↗</button></div></div>
+    </section>
+  </main>
+
+  <section id="hud" hidden aria-label="Flight information">
+    <div class="hud-top"><div><span class="tiny-label">SCORE</span><strong id="score">000000</strong><span id="combo" class="combo">×1</span></div><div class="course-progress"><span id="sector-name">THE FRACTURE</span><div class="progress-track"><div id="progress-fill"></div></div></div><div class="timer-box"><span class="tiny-label" id="timer-label">FLIGHT TIME</span><strong id="timer">00:00.0</strong><button id="pause-button" class="mini-button" aria-label="Pause flight">Ⅱ</button></div></div>
+    <div id="target" aria-hidden="true"><i></i><span></span></div>
+    <div id="next-gate" aria-hidden="true">◇</div>
+    <div id="callout" aria-live="polite"></div>
+    <div id="countdown" hidden aria-live="assertive">3</div>
+    <div class="hud-bottom"><div class="velocity"><span class="tiny-label">VELOCITY</span><strong id="speed">000</strong><span class="units">KM/H</span><div id="boost-label">SHIFT / BOOST</div></div><div class="ship-status"><div><span>HULL</span><div class="meter hull"><div id="health-fill"></div></div><b id="health-number">100</b></div><div><span>BOOST</span><div class="meter"><div id="boost-fill"></div></div></div><div><span>HEAT</span><div class="meter heat"><div id="heat-fill"></div></div><b id="heat-label">READY</b></div></div><div class="run-tally"><span id="gate-tally">0 GATES</span><span id="kill-tally">0 MACHINES</span><span id="ghost-gap">SOLO FLIGHT</span></div></div>
+    <div class="control-strip" id="control-strip">WASD / ARROWS · MOVE &nbsp; SPACE / CLICK · FIRE &nbsp; SHIFT · BOOST &nbsp; P · PAUSE</div>
+    <div id="touch-controls"><button id="touch-fire" class="touch-button">FIRE</button><button id="touch-boost" class="touch-button">BOOST</button></div>
+  </section>
+
+  <aside id="camera-status" hidden><span class="status-dot"></span><span id="camera-status-text">CAMERA ON · LOCAL ONLY</span><button id="stop-camera" class="text-button">STOP CAMERA ×</button></aside>
+  <aside id="live-preview" hidden aria-label="Local hand tracking preview"></aside>
+  <pre id="diagnostics" hidden></pre>
+  <div id="toast" role="status" hidden></div>
+  <div id="fatal" hidden role="alert"><h2>THE FLIGHT DECK COULDN'T START.</h2><p id="fatal-message"></p><button id="reload" class="button primary">TRY AGAIN</button></div>
+
+  <dialog id="audio-dialog" aria-labelledby="audio-title">
+    <button id="close-audio" class="close-dialog" aria-label="Close sound settings">×</button>
+    <div class="eyebrow">TRANSMISSION / 116 BPM</div>
+    <h2 id="audio-title">TUNE INTO<br><em>THE VOID.</em></h2>
+    <div class="track-card"><span class="track-mark" aria-hidden="true">◉</span><div><strong>NEON WAKE</strong><span>ORIGINAL DRIFTFALL SOUNDTRACK</span></div></div>
+    <p>Warm synths in the hangar. Rolling bass and drums in flight. An extra shimmer when you boost.</p>
+    <button id="audio-enable" class="button primary full" aria-pressed="false">TURN ON SOUND ♪</button>
+    <div class="audio-mixer">
+      <label for="music-volume">MUSIC <output id="music-level" for="music-volume">48%</output></label>
+      <input id="music-volume" type="range" min="0" max="100" step="1" value="48">
+      <label for="effects-volume">SOUND EFFECTS <output id="effects-level" for="effects-volume">65%</output></label>
+      <input id="effects-volume" type="range" min="0" max="100" step="1" value="65">
+    </div>
+    <p id="music-status" class="audio-status" role="status">PRESS TURN ON SOUND TO LISTEN</p>
+    <p class="muted">M mutes everything. Levels are saved on this device; sound starts off on each new page visit. Synthesized in your browser, with no music downloads, streaming service, or microphone.</p>
+  </dialog>
+
+  <dialog id="camera-dialog" aria-labelledby="camera-title">
+    <button class="close-dialog" id="cancel-camera" aria-label="Cancel camera setup">×</button>
+    <div class="eyebrow">YOUR HANDS. YOUR CALL.</div>
+    <h2 id="camera-title">LET'S GET YOU<br><em>FLIGHT-READY.</em></h2>
+    <div id="consent-step">
+      <p>Your webcam becomes the controller. <strong>Video stays in your browser.</strong> No recording, uploads, accounts, or microphone access.</p>
+      <p class="muted">After you agree, we download Google's hand-tracking model and MediaPipe runtime from Google and jsDelivr. These providers receive normal network data, such as your IP address—not your camera frames.</p>
+      <div class="setup-options"><label>CONTROL STYLE<select id="hand-mode"><option value="one">One hand · steer + pinch to fire</option><option value="two">Two hands · pilot + gunner</option></select></label><label class="check-label"><input type="checkbox" id="swap-hands"> Swap two-hand roles</label></div>
+      <label class="consent-check"><input id="camera-consent" type="checkbox"> <span>I agree to use my webcam for local hand tracking this session. I can stop it at any time.</span></label>
+      <button id="allow-camera" class="button primary full" disabled>ALLOW CAMERA & CONTINUE <span>→</span></button>
+      <button id="camera-fallback" class="text-button full">PLAY WITHOUT A CAMERA INSTEAD</button>
+    </div>
+    <div id="calibration-step" hidden>
+      <div id="setup-preview-slot"><div id="tracking-preview"><video id="camera-video" muted playsinline aria-label="Your local camera preview"></video><canvas id="hand-overlay" aria-label="Detected hand landmarks"></canvas><span class="preview-caption">LOCAL PREVIEW · NEVER UPLOADED</span></div></div>
+      <p id="calibration-message" role="status">Waiting for camera permission…</p>
+      <p class="muted" id="calibration-tip">Rest your elbows. Hold one hand comfortably in view. Keep it still for a moment, then calibrate. Small movements are enough.</p>
+      <button id="calibrate" class="button primary full" disabled>CALIBRATE & FLY <span>→</span></button>
+      <button id="calibration-fallback" class="text-button full">STOP CAMERA & USE KEYBOARD</button>
+    </div>
+    <p class="error-text" id="camera-error" role="alert"></p>
+  </dialog>
+
+  <dialog id="pause-dialog" aria-labelledby="pause-title">
+    <div class="eyebrow" id="pause-eyebrow">TAKE A BREATH</div>
+    <h2 id="pause-title">HOLDING<br><em>POSITION.</em></h2>
+    <p id="pause-reason">Your flight is paused.</p>
+    <button id="resume" class="button primary full">BACK TO THE RIFT <span>→</span></button>
+    <button id="pause-keyboard" class="button secondary full" hidden>CONTINUE WITH KEYBOARD</button>
+    <button id="pause-stop-camera" class="text-button full" hidden>STOP CAMERA</button>
+    <button id="quit" class="text-button full">END FLIGHT & RETURN TO HANGAR</button>
+  </dialog>
+
+  <dialog id="result-dialog" aria-labelledby="result-title">
+    <div class="eyebrow" id="result-eyebrow">FLIGHT COMPLETE</div>
+    <h2 id="result-title">YOU FOUND<br><em>A WAY THROUGH.</em></h2>
+    <div class="result-score"><span class="tiny-label">FINAL SCORE</span><strong id="final-score">000000</strong></div>
+    <div class="result-grid"><div><strong id="final-time">0:00</strong><span>TIME</span></div><div><strong id="final-gates">0</strong><span>GATES</span></div><div><strong id="final-kills">0</strong><span>MACHINES</span></div><div><strong id="final-combo">0×</strong><span>BEST CHAIN</span></div></div>
+    <p id="record-message" class="muted"></p>
+    <button id="retry" class="button primary full">ONE MORE RUN <span>↻</span></button>
+    <div class="result-actions"><button id="save-ghost" class="button secondary" disabled>SAVE GHOST ↗</button><button id="result-share" class="button secondary">CHALLENGE A FRIEND ↗</button></div>
+    <button id="return-menu" class="text-button full">BACK TO HANGAR</button>
+  </dialog>
+
+  <dialog id="help-dialog" aria-labelledby="help-title">
+    <button id="close-help" class="close-dialog" aria-label="Close controls">×</button>
+    <div class="eyebrow">FLIGHT MANUAL / 001</div><h2 id="help-title">LESS THINKING.<br><em>MORE FLYING.</em></h2>
+    <div class="control-guide"><div><b>01 / STEER</b><p>Move your palm a little left, right, up or down. Or use WASD / arrow keys. On touchscreens, drag the world.</p></div><div><b>02 / SHOOT</b><p>Pinch thumb + index and hold. Or hold Space / click / FIRE. Aim at orange blocks and red machine eyes. Watch weapon heat.</p></div><div><b>03 / FLOW</b><p>Fly through cyan gates to build your chain. Hold Shift / BOOST for speed. In two-hand mode, pinch the steering hand to boost.</p></div></div>
+    <p class="muted">Two hands: screen-left pilots, screen-right aims and fires. Roles lock during setup. Press R to recenter. If tracking disappears, firing stops and the game pauses. Support your elbows and take breaks.</p>
+    <label class="check-label"><input id="reduced-motion" type="checkbox"> Reduced motion · no shake or speed streaks</label>
+    <label class="check-label"><input id="show-preview" type="checkbox"> Show webcam image during flight (skeleton is always local)</label>
+    <label class="sensitivity-label">HAND SENSITIVITY <input id="sensitivity" type="range" min="0.6" max="1.5" step="0.1" value="1"></label>
+    <div class="help-footer"><button id="clear-data" class="text-button">DELETE LOCAL GHOSTS</button><span>F3 · PERFORMANCE HUD</span></div>
+    <p class="muted">Ghost races are local or file-shared replays, not live multiplayer. Scores are not server-verified. Only flight positions are saved; no camera data.</p>
+  </dialog>
+  <dialog id="share-dialog" aria-labelledby="share-title"><button id="close-share" class="close-dialog" aria-label="Close share">×</button><div class="eyebrow">SAME COURSE. YOUR FRIEND'S TURN.</div><h2 id="share-title">SEND THE<br><em>CHALLENGE.</em></h2><p>Share this course link. Export your ghost after a completed flight so a friend can race your actual run.</p><label class="tiny-label" for="share-link">COURSE LINK</label><input id="share-link" readonly><button id="copy-link" class="button primary full">COPY LINK ↗</button><p class="muted">No camera data is shared. This is an asynchronous challenge, not a live room.</p></dialog>
+  <input id="ghost-file" type="file" accept="application/json,.json" hidden>
+  <noscript><div class="noscript">DRIFTFALL needs JavaScript and WebGL 2. Your webcam is optional and stays off until you explicitly consent.</div></noscript>
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
