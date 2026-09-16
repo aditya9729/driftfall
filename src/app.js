@@ -4,8 +4,9 @@ import { Run, STEP, clamp, emptyInput, cleanSeed, dailySeed, MODES, CHARACTERS, 
 import { Renderer, BIOMES } from './renderer.js';
 import { HandMapper } from './gestures.js';
 import { CameraSession, cameraMessage } from './camera.js';
-import { GhostStore, record, parseReplay, MAX_REPLAY_BYTES, ghostAt, lastDistance } from './replay.js';
+import { GhostStore, record, parseReplay, validateReplay, MAX_REPLAY_BYTES, ghostAt, lastDistance } from './replay.js';
 import { AudioBus } from './audio.js';
+import * as boardApi from './leaderboard.js';
 const $ = id => document.getElementById(id);
 const canvas=$('world'),audio=new AudioBus();
 let renderer;
@@ -79,7 +80,7 @@ function begin(control='keyboard'){
   $('callout').textContent='';$('countdown').textContent='3';
   $('timer-label').textContent=mode==='swarm'?'SURVIVE':'FLIGHT TIME';
   $('control-strip').textContent=control==='hands'?
-    (mapper.mode==='two'?'PILOT HAND · STEER + PINCH BOOST    GUNNER HAND · AIM + PINCH FIRE    SPACE ALSO FIRES    R · RECENTER':'MOVE PALM · STEER    PINCH OR SPACE · FIRE    SHIFT · BOOST    R · RECENTER    P · PAUSE'):
+    (mapper.mode==='two'?'PILOT HAND · STEER + PINCH BOOST    GUNNER HAND · AIM + FIST/PINCH FIRE    SPACE ALSO FIRES    R · RECENTER':'MOVE PALM · STEER    FIST OR PINCH · FIRE    PUSH FORWARD · BOOST    SPACE ALSO FIRES    R · RECENTER'):
     'WASD / ARROWS · MOVE    SPACE / CLICK · FIRE    SHIFT · BOOST    P · PAUSE';
   $('boost-label').textContent=control==='hands'&&mapper.mode==='two'?'PILOT PINCH / BOOST':'SHIFT / BOOST';
   setState('countdown');canvas.focus();audio.resume();updateHud(performance.now());
@@ -158,7 +159,7 @@ async function allowCamera(){
   if(!$('camera-consent').checked)return;
   $('allow-camera').disabled=true;$('consent-step').hidden=true;$('calibration-step').hidden=false;$('camera-error').textContent='';
   mapper=new HandMapper({mode:$('hand-mode').value,swap:$('swap-hands').checked,sensitivity:Number($('sensitivity').value)});
-  $('calibration-tip').textContent=mapper.mode==='two'?'Rest your elbows. Screen-left hand pilots; screen-right hand aims. Hold both still and calibrate. Roles stay locked even if your hands cross.':'Rest your elbows. Hold one hand comfortably in view, keep it still, then calibrate. Small movements are enough.';
+  $('calibration-tip').textContent=mapper.mode==='two'?'Rest your elbows. Screen-left hand pilots; screen-right hand aims. Hold both still and calibrate. Roles stay locked even if your hands cross.':'Rest your elbows. Hold one hand comfortably in view and keep it still — this sets your neutral. Small movements steer; push your hand toward the camera to boost.';
   try{await camera.start({consent:true});}catch(error){$('camera-error').textContent=cameraMessage(error);}
 }
 function cancelSetup(){steadySince=0;camera.stop();$('camera-dialog').close();$('camera-consent').checked=false;}
@@ -203,6 +204,14 @@ function finish(){
              :'Your best attempt on this course is still further ahead. Race it again.');
   // Only a completed run can be exported: a shared ghost must be a real finish.
   $('save-ghost').disabled=run.status!=='won'||!lastReplay;
+  // Only a completed run can be posted, for the same reason it is the only kind
+  // that can be exported: the board must not carry unfinished flights.
+  const canPost=boardConfigured()&&run.status==='won'&&Boolean(lastReplay);
+  $('submit-row').hidden=!canPost;
+  if(canPost){
+    $('submit-run').disabled=false;$('submit-status').textContent='';
+    try{$('board-name').value=localStorage.getItem('driftfall.name')||'';}catch{}
+  }
   $('save-ghost').title=run.status==='won'?'':'Finish the course to export a shareable ghost.';$('result-dialog').showModal();
 }
 $('retry').onclick=()=>{$('result-dialog').close();if(lastInputMode==='hands'){toMenu();setupCamera();}else begin('keyboard');};
@@ -240,6 +249,65 @@ function applyReduced(){reduced=$('reduced-motion').checked;document.body.classL
 $('reduced-motion').onchange=applyReduced;
 $('show-preview').onchange=()=>$('live-preview').classList.toggle('show-video',$('show-preview').checked);
 $('sensitivity').oninput=()=>mapper.sensitivity=Number($('sensitivity').value);
+// ---- Global board ---------------------------------------------------------
+// Entirely optional. An unconfigured build hides it rather than showing dead
+// controls, and every call fails soft so the board can never break a flight.
+function boardConfigured(){return boardApi.available();}
+$('open-board').hidden=!boardConfigured();
+async function showBoard(){
+  $('board-context').textContent=`${currentSeed()} · ${mode.toUpperCase()} · ${character(loadout.character).name}`;
+  $('board-list').innerHTML='<li class="board-empty">Loading…</li>';
+  $('board-verified').textContent='';
+  $('board-dialog').showModal();
+  try{
+    const data=await boardApi.board(currentSeed(),mode==='daily'?'race':mode,loadout.flight,loadout.character);
+    if(!data.entries?.length){$('board-list').innerHTML='<li class="board-empty">No runs on this course yet. Yours would be first.</li>';}
+    else{
+      $('board-list').innerHTML='';
+      for(const entry of data.entries){
+        const li=document.createElement('li');
+        li.innerHTML=`<span class="board-rank">${entry.rank}</span><span class="board-name"></span>`+
+          `<span class="board-pilot"></span><span class="board-time">${formatTime(entry.elapsed)}</span>`;
+        // Names come from other people: never inject them as markup.
+        li.querySelector('.board-name').textContent=entry.name;
+        li.querySelector('.board-pilot').textContent=character(entry.pilot).name;
+        const race=document.createElement('button');
+        race.className='text-button';race.textContent='RACE ↗';
+        race.onclick=()=>loadBoardGhost(entry.id,entry.name);
+        li.append(race);
+        $('board-list').append(li);
+      }
+    }
+    $('board-verified').textContent=data.verified||'';
+  }catch(error){
+    $('board-list').innerHTML='<li class="board-empty"></li>';
+    $('board-list').firstChild.textContent=`Could not reach the board: ${error.message}`;
+  }
+}
+async function loadBoardGhost(id,name){
+  try{
+    const ghostData=await boardApi.ghostById(id);
+    importedGhost=validateReplay(ghostData);
+    $('board-dialog').close();
+    $('seed').value=importedGhost.seed;selectMode(importedGhost.mode);
+    showToast(`Racing ${name}. Launch when ready.`);
+  }catch(error){showToast(`Could not load that ghost: ${error.message}`);}
+}
+$('open-board').onclick=showBoard;
+$('close-board').onclick=()=>$('board-dialog').close();
+$('board-dialog').addEventListener('cancel',e=>{e.preventDefault();$('board-dialog').close();});
+$('submit-run').onclick=async()=>{
+  if(!lastReplay||run.status!=='won')return;
+  $('submit-run').disabled=true;$('submit-status').textContent='Posting…';
+  try{
+    const result=await boardApi.submit($('board-name').value,lastReplay);
+    $('submit-status').textContent=result.rank?`Posted · rank ${result.rank} of ${result.of}.`:'Posted.';
+    try{localStorage.setItem('driftfall.name',$('board-name').value);}catch{}
+  }catch(error){
+    $('submit-status').textContent=error.message;
+    $('submit-run').disabled=false;
+  }
+};
 // ---- Flight builder -------------------------------------------------------
 function renderPilots(){
   const grid=$('pilot-grid');grid.innerHTML='';
@@ -386,7 +454,8 @@ function updateHud(now){
   $('score').textContent=String(Math.round(run.score)).padStart(6,'0');$('combo').textContent=`×${Math.max(1,run.combo)}`;
   $('timer').textContent=formatTime(mode==='swarm'?Math.max(0,90-run.elapsed):run.elapsed);
   $('speed').textContent=String(Math.round(run.speed*7.2)).padStart(3,'0');$('health-number').textContent=String(Math.round(run.health));
-  $('health-fill').style.width=`${run.maxHealth?run.health/run.maxHealth*100:0}%`;$('boost-fill').style.width=`${run.energy}%`;$('heat-fill').style.width=`${run.heat*100}%`;
+  $('health-fill').style.width=`${run.maxHealth?run.health/run.maxHealth*100:0}%`;$('boost-fill').style.width=`${run.energy}%`;
+  $('boost-fill').classList.toggle('hot',Boolean(run.boosting));$('heat-fill').style.width=`${run.heat*100}%`;
   $('heat-label').textContent=run.overheated?'COOLING':'READY';
   $('gate-tally').textContent=`${run.gateCount} GATES`;$('kill-tally').textContent=`${run.kills} LATTICE DOWN`;
   const objTarget=run.objectiveTarget||0,objDone=Math.min(run.kills,objTarget);
@@ -419,7 +488,12 @@ function frame(now){
     audio.setScene('playing',run.boosting?1:Math.min(.65,run.distance/run.length*.6));
     const events=run.drainEvents();renderer.effects(events,run);audio.events(events);
     for(const e of events){
-      if(e.type==='gate'){$('callout').textContent=e.perfect?`PERFECT LINE · ×${e.combo}`:`GATE CHAIN · ×${e.combo}`;calloutUntil=now+1000;}
+      if(e.type==='gate'){
+        const base=e.perfect?`PERFECT LINE · ×${e.combo}`:`GATE CHAIN · ×${e.combo}`;
+        $('callout').textContent=e.boosted?`${base} · BOOSTED ×1.5`:base;
+        if(e.boosted)$('callout').classList.add('good');
+        calloutUntil=now+1000;
+      }
       if(e.type==='overheat'){$('callout').textContent='COOLING DOWN';calloutUntil=now+1100;}
       if(e.type==='damage'){
         $('callout').textContent=`✖ HULL HIT · -${e.amount} · ${Math.max(0,Math.round(run.health))}% HULL`;
@@ -430,7 +504,7 @@ function frame(now){
         if(e.seekers)parts.push(`${e.seekers} SEEKER${e.seekers>1?'S':''}`);
         if(e.pylons)parts.push(`${e.pylons} PYLON${e.pylons>1?'S':''}`);
         // The first wave also teaches the fire control, in context.
-        const teach=e.index===0?(inputMode==='hands'?' · PINCH TO FIRE':' · SPACE TO FIRE'):'';
+        const teach=e.index===0?(inputMode==='hands'?' · MAKE A FIST TO FIRE':' · SPACE TO FIRE'):'';
         $('callout').textContent=`⚠ WAVE ${e.index+1}/${e.total} · ${parts.join(' + ')} INBOUND${teach}`;
         $('callout').classList.add('warn');calloutUntil=now+(e.index===0?2400:1500);
         audio.tone(196,.16,.03,'sawtooth',150);
