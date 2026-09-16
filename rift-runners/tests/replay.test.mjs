@@ -1,6 +1,6 @@
 import test from'node:test';import assert from'node:assert/strict';
 import {Run}from'../src/core.js';import{record,parseReplay,validateReplay,ghostAt,GhostStore,MAX_REPLAY_BYTES}from'../src/replay.js';
-const r=new Run();for(let i=0;i<20000&&r.status==='running';i++){const g=r.gates.find(g=>!g.passed);r.step({target:true,x:(g?.x||0)/8,y:(g?.y||0)/4,fire:true,boost:true});}
+const r=new Run();for(let i=0;i<20000&&r.status==='running';i++){const g=r.gates.find(g=>!g.passed);r.step({target:true,x:(g?.x||0)/8,y:(g?.y||0)/4,fire:true,boost:r.energy>60});}
 const ghost=record(r);
 test('a real completed run round-trips through validated ghost format',()=>{assert.equal(r.status,'won');assert.deepEqual(parseReplay(JSON.stringify(ghost)),ghost);});
 test('ghost interpolation follows samples and ends with the recording',()=>{const p=ghostAt(ghost,10);assert.ok(p.distance>0);assert.equal(ghostAt(ghost,ghost.elapsed+1),null);});

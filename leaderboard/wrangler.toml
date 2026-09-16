@@ -1,0 +1,13 @@
+name = "driftfall-board"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+
+# Set after `wrangler d1 create driftfall-board` - it prints this id.
+[[d1_databases]]
+binding = "DB"
+database_name = "driftfall-board"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+[vars]
+# The exact origin allowed to submit. No wildcard: this is the only writer.
+ALLOWED_ORIGIN = "https://aditya9729.github.io"

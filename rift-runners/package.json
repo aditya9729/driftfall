@@ -1,6 +1,6 @@
 {
   "name": "driftfall-rift-runners",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "Consent-first hand-controlled arcade flight experiment for DRIFTFALL",

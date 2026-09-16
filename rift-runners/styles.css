@@ -69,3 +69,25 @@ html[data-renderer="Canvas2D compatibility"] dialog::backdrop{backdrop-filter:no
   .pilot-grid,.flight-grid{grid-template-columns:1fr}
   .flight-actions{flex-direction:column}
 }
+/* Boosting pays 1.5x on gates, so the meter says when it is being spent. */
+#boost-fill.hot{background:var(--orange,#ff9b45);box-shadow:0 0 10px rgba(255,155,69,.55)}
+
+/* ---- Global board ---- */
+.submit-row{margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.12)}
+.submit-line{display:flex;gap:8px;margin-top:6px}
+.submit-line input{flex:1;text-transform:uppercase;letter-spacing:.12em}
+.submit-line .button{flex:0 0 auto}
+.board-list{list-style:none;margin:14px 0 10px;padding:0;display:flex;flex-direction:column;gap:2px;max-height:46vh;overflow-y:auto}
+.board-list li{display:grid;grid-template-columns:2.2rem 1fr auto auto auto;gap:10px;align-items:center;
+  padding:8px 10px;border-radius:8px;background:rgba(255,255,255,.03);
+  font:600 12px/1.4 var(--mono,ui-monospace,monospace);letter-spacing:.06em}
+.board-list li:nth-child(1){background:rgba(160,230,110,.12)}
+.board-rank{opacity:.55}
+.board-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.board-pilot{font-size:10px;opacity:.6;letter-spacing:.14em}
+.board-time{color:var(--lime);font-weight:700}
+.board-empty{display:block!important;opacity:.65;padding:14px 10px;background:none!important}
+@media (max-width:620px){
+  .board-list li{grid-template-columns:1.8rem 1fr auto;row-gap:2px}
+  .board-pilot{grid-column:2/4}
+}

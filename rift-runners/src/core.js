@@ -1,7 +1,7 @@
 // Copyright 2026 Aditya Gudal. SPDX-License-Identifier: Apache-2.0
 // Pure game rules. No DOM, camera, rendering, storage, network or wall clock.
 export const VERSION = '0.1.0';
-export const RULESET = 3;
+export const RULESET = 4;
 export const STEP = 1 / 120;
 export const COURSE_LENGTH = 2100;
 export const MODES = Object.freeze(['race', 'swarm', 'daily']);
@@ -28,11 +28,19 @@ export function character(id) { return CHARACTERS[id] || CHARACTERS[DEFAULT_CHAR
 // Which hostiles a course fields, how many, and how wide they sit.
 export const MIXES = Object.freeze(['balanced', 'seekers', 'pylons']);
 export const DEFAULT_FLIGHT = Object.freeze({ mix: 'balanced', density: 1, spread: 1 });
+// An absent value must fall back to the default, not to the low end of the
+// range: Number(null) and Number('') are 0, which clamps to the minimum. URL
+// parameters and form fields hand us exactly those when they are missing.
+function dial(value, fallback) {
+  if (value === null || value === undefined || value === '') return fallback;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
 export function cleanFlight(flight = {}) {
   return {
     mix: MIXES.includes(flight?.mix) ? flight.mix : 'balanced',
-    density: clamp(Math.round(finite(Number(flight?.density), 1) * 10) / 10, .5, 2),
-    spread: clamp(Math.round(finite(Number(flight?.spread), 1) * 10) / 10, .5, 1.6)
+    density: clamp(Math.round(dial(flight?.density, 1) * 10) / 10, .5, 2),
+    spread: clamp(Math.round(dial(flight?.spread, 1) * 10) / 10, .5, 1.6)
   };
 }
 export function isDefaultFlight(flight) {
@@ -149,7 +157,7 @@ export class Run {
     this.maxHealth = Math.round(100 * this.pilot.hull);
     this.health = this.maxHealth; this.energy = 100; this.heat = 0; this.overheated = false;
     this.score = 0; this.combo = 0; this.bestCombo = 0; this.gateCount = 0;
-    this.kills = 0; this.shots = 0; this.hitCount = 0; this.perfects = 0;
+    this.kills = 0; this.shots = 0; this.hitCount = 0; this.perfects = 0; this.boostGates = 0;
     this.bullets = []; this.events = []; this.samples = [];
     this.cooldown = 0; this.invulnerable = 0; this.sampleAt = 0;
     this.status = 'running'; this.boosting = false; this.tick = 0;
@@ -179,7 +187,7 @@ export class Run {
     p.x = clamp(p.x + p.vx * dt, -8, 8); p.y = clamp(p.y + p.vy * dt, -4, 4);
     // A tiny residual energy is insufficient to stutter-boost every frame.
     this.boosting = Boolean(input.boost && this.energy >= (this.boosting ? .5 : 12));
-    this.energy = clamp(this.energy + (this.boosting ? -29 : 13) * dt, 0, 100);
+    this.energy = clamp(this.energy + (this.boosting ? -26 : 16) * dt, 0, 100);
     this.speed = lerp(this.speed, (this.boosting ? 48 : 28) * this.pilot.speed, 1 - Math.exp(-2.7 * dt));
     this.distance += this.speed * dt;
     // Announce each hostile wave exactly once, before it is in weapons range.
@@ -259,10 +267,12 @@ export class Run {
         g.collected = true; g.perfect = miss < .75;
         this.gateCount++; this.combo = Math.min(8, this.combo + 1);
         this.bestCombo = Math.max(this.combo, this.bestCombo);
-        this.score += 150 * this.combo + (g.perfect ? 150 : 0);
+        const runHot = this.boosting;
+        this.score += Math.round((150 * this.combo + (g.perfect ? 150 : 0)) * (runHot ? 1.5 : 1));
         if (g.perfect) this.perfects++;
+        if (runHot) this.boostGates++;
         this.energy = Math.min(100, this.energy + 7);
-        this.emit('gate', { perfect: g.perfect, combo: this.combo, x: g.x, y: g.y, z: g.z });
+        this.emit('gate', { perfect: g.perfect, combo: this.combo, boosted: runHot, x: g.x, y: g.y, z: g.z });
       } else { this.combo = 0; this.emit('miss'); }
     }
     if (this.elapsed >= this.sampleAt) {
@@ -284,6 +294,7 @@ export class Run {
     return { seed: this.seed, mode: this.mode, status: this.status, elapsed: this.elapsed,
       distance: this.distance, length: this.length, player: { ...this.player }, speed: this.speed,
       health: this.health, energy: this.energy, heat: this.heat, score: this.score,
+      boosting: this.boosting, boostGates: this.boostGates,
       gates: this.gateCount, kills: this.kills, shots: this.shots, combo: this.combo,
       wave: { current: this.waveIndex + 1, total: this.waves.length },
       objective: { target: this.objectiveTarget,

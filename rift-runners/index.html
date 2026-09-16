@@ -43,7 +43,7 @@
         <button class="mode" data-mode="swarm" aria-pressed="false"><span class="mode-icon" aria-hidden="true">⌁</span><span><strong>SWARM RUN</strong><small>90 seconds. Make every shot count.</small></span><span class="mode-number">02</span></button>
         <button class="mode" data-mode="daily" aria-pressed="false"><span class="mode-icon" aria-hidden="true">✳</span><span><strong>DAILY RIFT</strong><small>A new course. The same sky for all.</small></span><span class="mode-number">03</span></button>
       </div>
-      <div class="deck-footer"><label class="seed-label">COURSE <input id="seed" aria-label="Course seed" value="NEBULA-01" maxlength="32" spellcheck="false" autocomplete="off"></label><div><button id="build-flight" class="text-button">BUILD YOUR FLIGHT ↗</button><button id="import-ghost" class="text-button">LOAD A FRIEND'S GHOST ↗</button><button id="share-course" class="text-button">SHARE COURSE ↗</button></div></div>
+      <div class="deck-footer"><label class="seed-label">COURSE <input id="seed" aria-label="Course seed" value="NEBULA-01" maxlength="32" spellcheck="false" autocomplete="off"></label><div><button id="build-flight" class="text-button">BUILD YOUR FLIGHT ↗</button><button id="open-board" class="text-button" hidden>GLOBAL BOARD ↗</button><button id="import-ghost" class="text-button">LOAD A FRIEND'S GHOST ↗</button><button id="share-course" class="text-button">SHARE COURSE ↗</button></div></div>
       <div id="loadout-summary" class="loadout-summary">VESPER · BALANCED LATTICE · CHASE CAM</div>
     </section>
   </main>
@@ -123,13 +123,18 @@
     <p id="record-message" class="muted"></p>
     <button id="retry" class="button primary full">ONE MORE RUN <span>↻</span></button>
     <div class="result-actions"><button id="save-ghost" class="button secondary" disabled>SAVE GHOST ↗</button><button id="result-share" class="button secondary">CHALLENGE A FRIEND ↗</button></div>
+    <div id="submit-row" class="submit-row" hidden>
+      <label class="tiny-label" for="board-name">POST TO THE GLOBAL BOARD</label>
+      <div class="submit-line"><input id="board-name" maxlength="16" placeholder="YOUR NAME" spellcheck="false" autocomplete="off"><button id="submit-run" class="button primary">POST ↗</button></div>
+      <p id="submit-status" class="muted"></p>
+    </div>
     <button id="return-menu" class="text-button full">BACK TO HANGAR</button>
   </dialog>
 
   <dialog id="help-dialog" aria-labelledby="help-title">
     <button id="close-help" class="close-dialog" aria-label="Close controls">×</button>
     <div class="eyebrow">FLIGHT MANUAL / 001</div><h2 id="help-title">LESS THINKING.<br><em>MORE FLYING.</em></h2>
-    <div class="control-guide"><div><b>01 / STEER</b><p>Move your palm a little left, right, up or down. Or use WASD / arrow keys. On touchscreens, drag the world.</p></div><div><b>02 / SHOOT</b><p>Pinch thumb + index and hold. Or hold Space / click / FIRE. Your targets are THE LATTICE: fast SEEKERS (2 hits) and armoured PYLONS (3 hits). Watch weapon heat.</p></div><div><b>04 / LOADOUT</b><p>BUILD YOUR FLIGHT picks your pilot, which hostiles the course fields, how many, how wide, cockpit or chase camera, and the sky. A custom flight is its own course with its own ghosts.</p></div><div><b>03 / FLOW</b><p>Fly through cyan gates to build your chain. Hold Shift / BOOST for speed. In two-hand mode, pinch the steering hand to boost.</p></div></div>
+    <div class="control-guide"><div><b>01 / STEER</b><p>Move your palm a little left, right, up or down — a fist or pinch does not move you, so you can steer and shoot at once. Or use WASD / arrow keys. On touchscreens, drag the world.</p></div><div><b>02 / SHOOT</b><p><b>Make a fist</b> and hold — or pinch thumb + index, or hold Space / click / FIRE. Any of them fires; use whichever your hand finds easiest. Your targets are THE LATTICE: fast SEEKERS (2 hits) and armoured PYLONS (3 hits). Watch weapon heat.</p></div><div><b>04 / LOADOUT</b><p>BUILD YOUR FLIGHT picks your pilot, which hostiles the course fields, how many, how wide, cockpit or chase camera, and the sky. A custom flight is its own course with its own ghosts.</p></div><div><b>03 / FLOW</b><p>Fly through cyan gates to build your chain. <b>Take a gate while boosting and it pays 1.5×</b> — but holding boost the whole way will kill you. Hold Shift / BOOST, or in one-hand mode <b>push your hand toward the camera</b> like a throttle. In two-hand mode, pinch the steering hand.</p></div></div>
     <p class="muted">Two hands: screen-left pilots, screen-right aims and fires. Roles lock during setup. Press R to recenter. If tracking disappears, firing stops and the game pauses. Support your elbows and take breaks.</p>
     <label class="check-label"><input id="reduced-motion" type="checkbox"> Reduced motion · no shake or speed streaks</label>
     <label class="check-label"><input id="show-preview" type="checkbox"> Show webcam image during flight (skeleton is always local)</label>
@@ -149,6 +154,14 @@
     <p class="muted"><b>Ghosts:</b> every finished flight leaves one — a win becomes your personal best, and a crash becomes your best attempt to beat. It appears automatically on your next run on the same course, and the HUD shows your gap. Only a completed run can be exported for a friend. Ghost races are local or file-shared replays, not live multiplayer. Scores are not server-verified. Only flight positions are saved; no camera data.</p>
   </dialog>
   <dialog id="share-dialog" aria-labelledby="share-title"><button id="close-share" class="close-dialog" aria-label="Close share">×</button><div class="eyebrow">SAME COURSE. YOUR FRIEND'S TURN.</div><h2 id="share-title">SEND THE<br><em>CHALLENGE.</em></h2><p>Share this course link. Export your ghost after a completed flight so a friend can race your actual run.</p><label class="tiny-label" for="share-link">COURSE LINK</label><input id="share-link" readonly><button id="copy-link" class="button primary full">COPY LINK ↗</button><p class="muted">No camera data is shared. This is an asynchronous challenge, not a live room.</p></dialog>
+  <dialog id="board-dialog" aria-labelledby="board-title">
+    <button id="close-board" class="close-dialog" aria-label="Close leaderboard">×</button>
+    <div class="eyebrow">GLOBAL BOARD</div>
+    <h2 id="board-title">FASTEST<br><em>THROUGH THE RIFT.</em></h2>
+    <p id="board-context" class="muted"></p>
+    <ol id="board-list" class="board-list"></ol>
+    <p id="board-verified" class="muted"></p>
+  </dialog>
   <dialog id="flight-dialog" aria-labelledby="flight-title">
     <button id="close-flight" class="close-dialog" aria-label="Close flight builder">×</button>
     <div class="eyebrow">LOADOUT</div>

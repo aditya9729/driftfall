@@ -48,6 +48,16 @@ test('density and spread change the course in the direction they promise',()=>{
  // Out-of-range values are clamped, never trusted.
  const wild=cleanFlight({mix:'nonsense',density:99,spread:-4});
  assert.equal(wild.mix,'balanced');assert.ok(wild.density<=2&&wild.spread>=.5);
+ // An ABSENT value must default, not clamp to the low end. URLSearchParams.get
+ // returns null for a missing key and Number(null) is 0, which silently made
+ // every partially-specified share link a 0.5x course.
+ for(const absent of [{},{density:null,spread:null},{density:'',spread:''},{density:undefined}]){
+  const f=cleanFlight(absent);
+  assert.equal(f.density,1,`density defaults for ${JSON.stringify(absent)}`);
+  assert.equal(f.spread,1,`spread defaults for ${JSON.stringify(absent)}`);
+ }
+ assert.equal(flightTag(cleanFlight({mix:null,density:null,spread:null}),null),'STD',
+  'a link with no flight params is the standard board');
 });
 
 test('every pilot is playable and their tradeoffs are real',()=>{

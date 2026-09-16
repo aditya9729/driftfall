@@ -4,7 +4,7 @@ export function complete(mode='race'){
  const r=new Run({mode});
  for(let i=0;i<23000&&r.status==='running';i++){
   const g=r.gates.find(g=>!g.passed);
-  r.step({x:(g?.x||0)/8,y:(g?.y||0)/4,target:true,fire:true,boost:true});
+  r.step({x:(g?.x||0)/8,y:(g?.y||0)/4,target:true,fire:true,boost:r.energy>60});
  }
  return r;
 }
