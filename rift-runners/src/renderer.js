@@ -75,9 +75,9 @@ void main(){
  frag=vec4(c,1.);
 }`;
 export const BIOMES = [
-  { name: 'THE FRACTURE', label: 'Orbital salvage belt', sky: [.035,.09,.13], accent: [.49,.92,.83], block: [.13,.22,.26], edge: [.68,.96,.44] },
-  { name: 'VIOLET WAKE', label: 'The glass moon', sky: [.09,.045,.15], accent: [.72,.52,.99], block: [.22,.15,.3], edge: [.98,.63,.41] },
-  { name: 'SUNKEN SUN', label: 'A star in pieces', sky: [.13,.07,.045], accent: [.98,.57,.32], block: [.28,.19,.12], edge: [.99,.9,.55] }
+  { id: 'fracture', name: 'THE FRACTURE', label: 'Orbital salvage belt', sky: [.035,.09,.13], accent: [.49,.92,.83], block: [.13,.22,.26], edge: [.68,.96,.44] },
+  { id: 'violet', name: 'VIOLET WAKE', label: 'The glass moon', sky: [.09,.045,.15], accent: [.72,.52,.99], block: [.22,.15,.3], edge: [.98,.63,.41] },
+  { id: 'sunken', name: 'SUNKEN SUN', label: 'A star in pieces', sky: [.13,.07,.045], accent: [.98,.57,.32], block: [.28,.19,.12], edge: [.99,.9,.55] }
 ];
 function shader(gl, type, source) {
   const s = gl.createShader(type); gl.shaderSource(s, source); gl.compileShader(s);
@@ -150,8 +150,8 @@ export class Renderer {
       if (large && j%3===0) this.box(x+Math.cos(a)*(r+.32),y+Math.sin(a)*(r+.32),z,.55,.28,.7,[.16,.23,.24],0,a);
     }
   }
-  ship(x,y,z,roll,time,ghost=false,scale=1) {
-    const white=ghost?[.55,.38,.9]:[.78,.83,.76], dark=ghost?[.28,.2,.44]:[.09,.16,.18], light=ghost?[.83,.48,1]:[.67,1,.46];
+  ship(x,y,z,roll,time,ghost=false,scale=1,tint=null) {
+    const white=ghost?[.55,.38,.9]:[.78,.83,.76], dark=ghost?[.28,.2,.44]:[.09,.16,.18], light=ghost?[.83,.48,1]:(tint||[.67,1,.46]);
     const add=(dx,dy,dz,sx,sy,sz,c,e=0,rz=0)=>{
       const xx=dx*Math.cos(roll)-dy*Math.sin(roll), yy=dx*Math.sin(roll)+dy*Math.cos(roll);
       this.box(x+xx*scale,y+yy*scale,z+dz*scale,sx*scale,sy*scale,sz*scale,c,e,roll+rz);
@@ -185,12 +185,16 @@ export class Renderer {
       });
     }
   }
-  draw(run, time, { menu=false, reducedMotion=false, ghost=null, dt=.016 }={}) {
+  draw(run, time, { menu=false, reducedMotion=false, ghost=null, dt=.016, view='third', theme='auto' }={}) {
     const started=performance.now(); this.resize(); const gl=this.gl;
     const w=this.canvas.width,h=this.canvas.height,aspect=w/h;
     const distance=menu?time*7:run.distance;
+    // 'auto' cycles biomes by distance; a pinned theme holds one for the whole run.
+    const pinned=BIOMES.findIndex(b=>b.id===theme);
     const section=menu?0:clamp(distance/700,0,2.999);
-    const index=Math.floor(section), next=Math.min(2,index+1), blend=clamp((section-index-.75)*4,0,1);
+    const index=pinned>=0?pinned:Math.floor(section);
+    const next=pinned>=0?pinned:Math.min(2,index+1);
+    const blend=pinned>=0?0:clamp((section-index-.75)*4,0,1);
     const biome=BIOMES[index], sky=biome.sky.map((v,i)=>lerp(v,BIOMES[next].sky[i],blend));
     const accent=biome.accent.map((v,i)=>lerp(v,BIOMES[next].accent[i],blend));
     const edge=biome.edge.map((v,i)=>lerp(v,BIOMES[next].edge[i],blend));
@@ -204,10 +208,19 @@ export class Renderer {
     const px=run.player.x,py=run.player.y;
     this.shake=Math.max(0,this.shake-dt);
     const jitter=reducedMotion?0:Math.sin(time*87)*this.shake*.4;
-    const cameraX=menu?-3.5:px*.23+jitter, cameraY=menu?5.0:3.6+py*.16;
-    const fov=(menu?58:61+(run.boosting&&!reducedMotion?5:0))*Math.PI/180;
-    this.eye=[cameraX,cameraY,menu?18:13];
-    this.vp=multiply(perspective(fov,aspect,.2,380),lookAt(this.eye,[menu?3.2:px*.15,menu?.4:py*.12,-30]));
+    // Cockpit view sits the eye at the hull and looks down the lane; chase view
+    // keeps the trailing camera. The menu always uses the showcase framing.
+    const cockpit=view==='first'&&!menu;
+    const fov=(menu?58:(cockpit?74:61)+(run.boosting&&!reducedMotion?5:0))*Math.PI/180;
+    if(cockpit){
+      this.eye=[px+jitter*.6,py+.62,1.6];
+      this.vp=multiply(perspective(fov,aspect,.2,380),lookAt(this.eye,[px+run.player.vx*.05,py+run.player.vy*.04,-40]));
+    }else{
+      const cameraX=menu?-3.5:px*.23+jitter, cameraY=menu?5.0:3.6+py*.16;
+      this.eye=[cameraX,cameraY,menu?18:13];
+      this.vp=multiply(perspective(fov,aspect,.2,380),lookAt(this.eye,[menu?3.2:px*.15,menu?.4:py*.12,-30]));
+    }
+    this.cockpit=cockpit;
     this.count=0;
     // Deterministic scenery windows: bounded draw work independent of run length.
     const base=Math.floor(distance/12);
@@ -289,7 +302,7 @@ export class Renderer {
       }
       const g=ghostAt(ghost,run.elapsed);
       if(g&&Math.abs(distance-g.distance)<220)this.ship(g.x,g.y,distance-g.distance,0,time,true,.85);
-      this.ship(px,py,0,clamp(-run.player.vx*.036,-.4,.4),time);
+      if(!this.cockpit)this.ship(px,py,0,clamp(-run.player.vx*.036,-.4,.4),time,false,1,run.pilot?.tint);
       if(run.invulnerable>0){
         this.ring(px,py,-.2,2.1,[1,.45,.3],time);
       }

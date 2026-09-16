@@ -1,9 +1,10 @@
 // Copyright 2026 Aditya Gudal. SPDX-License-Identifier: Apache-2.0
-import { Run, STEP, clamp, emptyInput, cleanSeed, dailySeed, MODES } from './core.js';
+import { Run, STEP, clamp, emptyInput, cleanSeed, dailySeed, MODES, CHARACTERS, DEFAULT_CHARACTER,
+  DEFAULT_FLIGHT, character, cleanFlight, isDefaultFlight, flightTag, course } from './core.js';
 import { Renderer, BIOMES } from './renderer.js';
 import { HandMapper } from './gestures.js';
 import { CameraSession, cameraMessage } from './camera.js';
-import { GhostStore, record, parseReplay, MAX_REPLAY_BYTES, ghostAt } from './replay.js';
+import { GhostStore, record, parseReplay, MAX_REPLAY_BYTES, ghostAt, lastDistance } from './replay.js';
 import { AudioBus } from './audio.js';
 const $ = id => document.getElementById(id);
 const canvas=$('world'),audio=new AudioBus();
@@ -14,6 +15,15 @@ $('reload').onclick=()=>location.reload();
 let storage=null;try{storage=window.localStorage;}catch{}
 const store=new GhostStore(storage);
 let mode='race',state='menu',inputMode='keyboard',lastInputMode='keyboard';
+// Loadout: pilot, course build and presentation. Persisted so a chosen flight
+// survives a reload; every value is re-cleaned by core before it is used.
+let loadout={character:DEFAULT_CHARACTER,flight:{...DEFAULT_FLIGHT},view:'third',theme:'auto'};
+try{const saved=JSON.parse(localStorage.getItem('driftfall.loadout')||'null');
+  if(saved)loadout={character:character(saved.character).id,flight:cleanFlight(saved.flight),
+    view:saved.view==='first'?'first':'third',
+    theme:['fracture','violet','sunken'].includes(saved.theme)?saved.theme:'auto'};
+}catch{}
+function saveLoadout(){try{localStorage.setItem('driftfall.loadout',JSON.stringify(loadout));}catch{}}
 let run=new Run(),ghost=null,importedGhost=null,lastReplay=null;
 let mapper=new HandMapper(),inferenceMs=0;
 let countdown=3,accumulator=0,lastTime=0,calloutUntil=0,lastHud=0,toastTimer=0;
@@ -26,6 +36,9 @@ const keys=new Set();
 const pointer={down:false,aim:false,x:0,y:0,touch:false,tx:0,ty:0,fire:false,boost:false};
 const query=new URLSearchParams(location.search);
 const challengeSeed=query.has('seed')?cleanSeed(query.get('seed')):null;
+if(query.has('mix')||query.has('density')||query.has('spread')){
+  loadout.flight=cleanFlight({mix:query.get('mix'),density:query.get('density'),spread:query.get('spread')});
+}
 if(challengeSeed)$('seed').value=challengeSeed;
 function showToast(message){clearTimeout(toastTimer);$('toast').textContent=message;$('toast').hidden=false;toastTimer=setTimeout(()=>$('toast').hidden=true,4500);}
 function clearInput(){keys.clear();pointer.down=false;pointer.fire=false;pointer.boost=false;pointer.touch=false;pointer.aim=false;pointer.x=0;pointer.y=0;activeInput=emptyInput();for(const id of ['touch-fire','touch-boost'])$(id).classList.remove('active');}
@@ -36,7 +49,15 @@ function selectMode(value){
   if(mode==='daily')$('seed').value=(query.get('mode')==='daily'&&challengeSeed)?challengeSeed:dailySeed();
   $('seed').readOnly=mode==='daily';updateRecordHint();
 }
-function updateRecordHint(){const g=store.load(currentSeed(),mode);$('record-hint').textContent=g?`PERSONAL BEST ${formatTime(g.elapsed)} · GHOST READY`:'NO ACCOUNT. JUST ONE MORE RUN.';}
+function updateRecordHint(){
+  const g=store.load(currentSeed(),mode,loadout.flight,loadout.character);
+  // A ghost used to appear only after a win, so most players never saw one and
+  // the HUD just read SOLO FLIGHT forever. Best attempts now count too, and the
+  // hint says which kind you have.
+  $('record-hint').textContent=!g?'NO GHOST YET · YOUR FIRST RUN MAKES ONE'
+    :g.status==='won'?`PERSONAL BEST ${formatTime(g.elapsed)} · GHOST READY`
+    :`BEST ATTEMPT ${Math.round(lastDistance(g))} M · GHOST READY`;
+}
 for(const b of document.querySelectorAll('[data-mode]'))b.onclick=()=>selectMode(b.dataset.mode);
 $('seed').onchange=()=>{$('seed').value=currentSeed();updateRecordHint();};
 selectMode(query.get('mode')||'race');
@@ -48,14 +69,17 @@ function setState(value){
 function formatTime(t){const minutes=Math.floor(t/60),seconds=Math.floor(t%60),tenths=Math.floor((t%1)*10);return `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}.${tenths}`;}
 function begin(control='keyboard'){
   clearInput();inputMode=control;lastInputMode=control;
-  run=new Run({seed:currentSeed(),mode});
-  ghost=importedGhost&&importedGhost.seed===run.seed&&importedGhost.mode===run.mode?importedGhost:store.load(run.seed,run.mode);
+  run=new Run({seed:currentSeed(),mode,flight:loadout.flight,character:loadout.character});
+  // An imported ghost must match the course build too, or it is racing a
+  // different layout with the same seed.
+  const fits=g=>g&&g.seed===run.seed&&g.mode===run.mode&&flightTag(g.flight,g.character)===run.tag;
+  ghost=fits(importedGhost)?importedGhost:store.load(run.seed,run.mode,loadout.flight,loadout.character);
   accumulator=0;countdown=3;calloutUntil=0;lastReplay=null;
   if(renderer){renderer.particles=[];renderer.shake=0;}
   $('callout').textContent='';$('countdown').textContent='3';
   $('timer-label').textContent=mode==='swarm'?'SURVIVE':'FLIGHT TIME';
   $('control-strip').textContent=control==='hands'?
-    (mapper.mode==='two'?'PILOT HAND · STEER + PINCH BOOST    GUNNER HAND · AIM + PINCH FIRE    R · RECENTER    P · PAUSE':'MOVE PALM · STEER    PINCH · FIRE    SHIFT · BOOST    R · RECENTER    P · PAUSE'):
+    (mapper.mode==='two'?'PILOT HAND · STEER + PINCH BOOST    GUNNER HAND · AIM + PINCH FIRE    SPACE ALSO FIRES    R · RECENTER':'MOVE PALM · STEER    PINCH OR SPACE · FIRE    SHIFT · BOOST    R · RECENTER    P · PAUSE'):
     'WASD / ARROWS · MOVE    SPACE / CLICK · FIRE    SHIFT · BOOST    P · PAUSE';
   $('boost-label').textContent=control==='hands'&&mapper.mode==='two'?'PILOT PINCH / BOOST':'SHIFT / BOOST';
   setState('countdown');canvas.focus();audio.resume();updateHud(performance.now());
@@ -167,11 +191,19 @@ function finish(){
   $('result-title').innerHTML=run.status==='won'?'YOU FOUND<br><em>A WAY THROUGH.</em>':'THE RIFT<br><em>WANTS A REMATCH.</em>';
   $('final-score').textContent=String(Math.round(run.score)).padStart(6,'0');$('final-time').textContent=formatTime(run.elapsed);
   $('final-gates').textContent=String(run.gateCount);$('final-kills').textContent=String(run.kills);$('final-combo').textContent=`${run.bestCombo}×`;
-  lastReplay=run.status==='won'?record(run):null;
+  // Record any flight that produced a usable line, not only a win: the ghost is
+  // a pace line to beat, and gating it behind a win meant it never appeared.
+  lastReplay=run.samples.length>=2?record(run):null;
   const saved=lastReplay?store.save(lastReplay):false;
-  $('record-message').textContent=run.status!=='won'?'Every flight teaches you a line. Finish a run to save and share its ghost.':
-    !store.available?'Flight complete. Browser storage is unavailable; export your ghost to keep it.':saved?'NEW PERSONAL BEST. Your ghost is ready for the next run.':'Flight complete. Your personal-best ghost is waiting for a rematch.';
-  $('save-ghost').disabled=!lastReplay;$('result-dialog').showModal();
+  $('record-message').textContent=!store.available
+    ?'Browser storage is unavailable, so this ghost cannot be kept locally.'
+    :run.status==='won'
+      ?(saved?'NEW PERSONAL BEST. Your ghost is ready for the next run.':'Flight complete. Your personal-best ghost is waiting for a rematch.')
+      :(saved?`BEST ATTEMPT SAVED · ${Math.round(run.distance)} M. Race this ghost on your next run.`
+             :'Your best attempt on this course is still further ahead. Race it again.');
+  // Only a completed run can be exported: a shared ghost must be a real finish.
+  $('save-ghost').disabled=run.status!=='won'||!lastReplay;
+  $('save-ghost').title=run.status==='won'?'':'Finish the course to export a shareable ghost.';$('result-dialog').showModal();
 }
 $('retry').onclick=()=>{$('result-dialog').close();if(lastInputMode==='hands'){toMenu();setupCamera();}else begin('keyboard');};
 $('return-menu').onclick=toMenu;$('result-dialog').addEventListener('cancel',e=>{e.preventDefault();toMenu();});
@@ -193,6 +225,10 @@ $('ghost-file').onchange=async()=>{
 };
 function share(){
   const url=new URL(location.href);url.search='';url.hash='';url.searchParams.set('mode',state==='result'?run.mode:mode);url.searchParams.set('seed',state==='result'?run.seed:currentSeed());
+  // A custom flight is a different course, so the link has to carry it or the
+  // recipient races something else under the same seed.
+  const f=cleanFlight(loadout.flight);
+  if(!isDefaultFlight(f)){url.searchParams.set('mix',f.mix);url.searchParams.set('density',String(f.density));url.searchParams.set('spread',String(f.spread));}
   $('share-link').value=url.href;$('share-dialog').showModal();
 }
 $('share-course').onclick=share;$('result-share').onclick=share;$('close-share').onclick=()=>$('share-dialog').close();
@@ -204,6 +240,58 @@ function applyReduced(){reduced=$('reduced-motion').checked;document.body.classL
 $('reduced-motion').onchange=applyReduced;
 $('show-preview').onchange=()=>$('live-preview').classList.toggle('show-video',$('show-preview').checked);
 $('sensitivity').oninput=()=>mapper.sensitivity=Number($('sensitivity').value);
+// ---- Flight builder -------------------------------------------------------
+function renderPilots(){
+  const grid=$('pilot-grid');grid.innerHTML='';
+  for(const c of Object.values(CHARACTERS)){
+    const b=document.createElement('button');
+    b.type='button';b.className='pilot'+(c.id===loadout.character?' selected':'');
+    b.setAttribute('role','radio');b.setAttribute('aria-checked',String(c.id===loadout.character));
+    b.dataset.pilot=c.id;
+    b.innerHTML=`<strong>${c.name}</strong><small>${c.role}</small><span>${c.blurb}</span>`;
+    b.onclick=()=>{loadout.character=c.id;renderPilots();updateFlightReadout();};
+    grid.append(b);
+  }
+}
+function updateFlightReadout(){
+  $('density-out').textContent=`${Number($('flight-density').value).toFixed(1)}×`;
+  $('spread-out').textContent=`${Number($('flight-spread').value).toFixed(1)}×`;
+  const draft=cleanFlight({mix:$('flight-mix').value,density:$('flight-density').value,spread:$('flight-spread').value});
+  const c=course(currentSeed(),mode==='swarm'?'swarm':'race',draft);
+  const p=character(loadout.character);
+  $('flight-readout').textContent=
+    `${c.hostileTotal} hostiles across ${c.waves.length} waves · objective ${c.objectiveTarget} · `+
+    `hull ${Math.round(100*p.hull)} · ${isDefaultFlight(draft)?'standard course':'custom course, separate ghosts'}`;
+}
+function updateLoadoutSummary(){
+  const p=character(loadout.character),f=cleanFlight(loadout.flight);
+  const mix=f.mix==='balanced'?'BALANCED LATTICE':f.mix==='seekers'?'SEEKERS ONLY':'PYLONS ONLY';
+  const extra=f.density!==1||f.spread!==1?` · ${f.density.toFixed(1)}× DENSITY`:'';
+  $('loadout-summary').textContent=`${p.name} · ${mix}${extra} · ${loadout.view==='first'?'COCKPIT':'CHASE CAM'}`;
+}
+function openFlight(){
+  $('flight-mix').value=loadout.flight.mix;
+  $('flight-density').value=String(loadout.flight.density);
+  $('flight-spread').value=String(loadout.flight.spread);
+  $('flight-view').value=loadout.view;$('flight-theme').value=loadout.theme;
+  renderPilots();updateFlightReadout();$('flight-dialog').showModal();
+}
+$('build-flight').onclick=openFlight;
+$('flight-dialog').addEventListener('cancel',e=>{e.preventDefault();$('flight-dialog').close();});
+updateLoadoutSummary();
+$('close-flight').onclick=()=>$('flight-dialog').close();
+for(const id of ['flight-mix','flight-density','flight-spread'])$(id).oninput=updateFlightReadout;
+$('reset-flight').onclick=()=>{
+  loadout={character:DEFAULT_CHARACTER,flight:{...DEFAULT_FLIGHT},view:'third',theme:'auto'};
+  saveLoadout();openFlight();updateLoadoutSummary();updateRecordHint();
+};
+$('apply-flight').onclick=()=>{
+  loadout.flight=cleanFlight({mix:$('flight-mix').value,density:$('flight-density').value,spread:$('flight-spread').value});
+  loadout.view=$('flight-view').value==='first'?'first':'third';
+  loadout.theme=$('flight-theme').value;
+  saveLoadout();updateLoadoutSummary();updateRecordHint();$('flight-dialog').close();
+  showToast(`${character(loadout.character).name} ready · ${isDefaultFlight(loadout.flight)?'standard course':'custom course'}`);
+};
 $('clear-data').onclick=()=>{store.clear();importedGhost=null;ghost=null;updateRecordHint();showToast('Local ghosts deleted.');};
 function syncAudioUI(){
   const a=audio.snapshot();
@@ -280,7 +368,14 @@ window.addEventListener('pagehide',()=>{camera.stop();audio.suspend();clearInput
 window.addEventListener('pageshow',e=>{if(e.persisted&&!document.hidden&&['menu','result'].includes(state))audio.resume().then(syncAudioUI);});
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();camera.stop();pause('The graphics context was lost. Reload the page to restore it.');$('fatal').hidden=false;$('fatal-message').textContent='Graphics context lost. Your camera was turned off. Reload to restore the flight deck.';});
 function input(now){
-  if(inputMode==='hands')return{...mapper.input(now),boost:mapper.input(now).boost||keys.has('ShiftLeft')||keys.has('ShiftRight')||pointer.boost};
+  if(inputMode==='hands'){
+    const h=mapper.input(now);
+    // Keyboard and touch stay live as a backup for BOTH fire and boost: pinch
+    // detection can struggle, and a player with no way to shoot has no game.
+    return{...h,
+      fire:h.fire||keys.has('Space')||pointer.down||pointer.fire,
+      boost:h.boost||keys.has('ShiftLeft')||keys.has('ShiftRight')||pointer.boost};
+  }
   const x=Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'));
   const y=Number(keys.has('KeyW')||keys.has('ArrowUp'))-Number(keys.has('KeyS')||keys.has('ArrowDown'));
   return{x:pointer.touch?clamp(pointer.tx,-1,1):x,y:pointer.touch?clamp(pointer.ty,-1,1):y,target:pointer.touch,
@@ -290,8 +385,8 @@ function input(now){
 function updateHud(now){
   $('score').textContent=String(Math.round(run.score)).padStart(6,'0');$('combo').textContent=`×${Math.max(1,run.combo)}`;
   $('timer').textContent=formatTime(mode==='swarm'?Math.max(0,90-run.elapsed):run.elapsed);
-  $('speed').textContent=String(Math.round(run.speed*7.2)).padStart(3,'0');$('health-number').textContent=String(run.health);
-  $('health-fill').style.width=`${run.health}%`;$('boost-fill').style.width=`${run.energy}%`;$('heat-fill').style.width=`${run.heat*100}%`;
+  $('speed').textContent=String(Math.round(run.speed*7.2)).padStart(3,'0');$('health-number').textContent=String(Math.round(run.health));
+  $('health-fill').style.width=`${run.maxHealth?run.health/run.maxHealth*100:0}%`;$('boost-fill').style.width=`${run.energy}%`;$('heat-fill').style.width=`${run.heat*100}%`;
   $('heat-label').textContent=run.overheated?'COOLING':'READY';
   $('gate-tally').textContent=`${run.gateCount} GATES`;$('kill-tally').textContent=`${run.kills} LATTICE DOWN`;
   const objTarget=run.objectiveTarget||0,objDone=Math.min(run.kills,objTarget);
@@ -299,7 +394,10 @@ function updateHud(now){
   $('objective-fill').style.width=`${objTarget?objDone/objTarget*100:0}%`;
   $('objective').classList.toggle('complete',Boolean(run.objectiveDone));
   $('progress-fill').style.width=`${clamp(mode==='swarm'?run.elapsed/90:run.distance/run.length,0,1)*100}%`;
-  $('sector-name').textContent=BIOMES[Math.min(2,Math.floor(run.distance/700))].name;
+  // A pinned theme holds one biome for the whole run, so the label must follow
+  // the same choice the renderer made rather than the distance.
+  const pinnedBiome=BIOMES.find(b=>b.id===loadout.theme);
+  $('sector-name').textContent=(pinnedBiome||BIOMES[Math.min(2,Math.floor(run.distance/700))]).name;
   const g=ghostAt(ghost,run.elapsed);$('ghost-gap').textContent=g?`${Math.abs(Math.round(run.distance-g.distance))} M ${run.distance>=g.distance?'AHEAD OF':'BEHIND'} GHOST`:'SOLO FLIGHT';
   if(now>calloutUntil){$('callout').textContent='';$('callout').classList.remove('warn','good');}
   if(!$('diagnostics').hidden)$('diagnostics').textContent=JSON.stringify({build:'0.1.1-music',...renderer?.stats,input:inputMode,handInferenceMs:+inferenceMs.toFixed(1),camera:camera.active?'on':'off',simulationHz:120,entities:run.entities.length,shots:run.shots},null,2);
@@ -349,7 +447,8 @@ function frame(now){
   // a software-composited backdrop can otherwise starve calibration.
   const modalOpen=Boolean(document.querySelector('dialog[open]'));
   if(!modalOpen||now-lastSceneDraw>400){
-    renderer.draw(run,now/1000,{menu:state==='menu',reducedMotion:reduced,ghost,dt:state==='playing'?dt:0});
+    renderer.draw(run,now/1000,{menu:state==='menu',reducedMotion:reduced,ghost,dt:state==='playing'?dt:0,
+      view:loadout.view,theme:loadout.theme});
     lastSceneDraw=now;
   }
   if(state!=='menu'){

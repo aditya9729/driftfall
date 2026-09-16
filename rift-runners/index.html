@@ -43,7 +43,8 @@
         <button class="mode" data-mode="swarm" aria-pressed="false"><span class="mode-icon" aria-hidden="true">⌁</span><span><strong>SWARM RUN</strong><small>90 seconds. Make every shot count.</small></span><span class="mode-number">02</span></button>
         <button class="mode" data-mode="daily" aria-pressed="false"><span class="mode-icon" aria-hidden="true">✳</span><span><strong>DAILY RIFT</strong><small>A new course. The same sky for all.</small></span><span class="mode-number">03</span></button>
       </div>
-      <div class="deck-footer"><label class="seed-label">COURSE <input id="seed" aria-label="Course seed" value="NEBULA-01" maxlength="32" spellcheck="false" autocomplete="off"></label><div><button id="import-ghost" class="text-button">LOAD A FRIEND'S GHOST ↗</button><button id="share-course" class="text-button">SHARE COURSE ↗</button></div></div>
+      <div class="deck-footer"><label class="seed-label">COURSE <input id="seed" aria-label="Course seed" value="NEBULA-01" maxlength="32" spellcheck="false" autocomplete="off"></label><div><button id="build-flight" class="text-button">BUILD YOUR FLIGHT ↗</button><button id="import-ghost" class="text-button">LOAD A FRIEND'S GHOST ↗</button><button id="share-course" class="text-button">SHARE COURSE ↗</button></div></div>
+      <div id="loadout-summary" class="loadout-summary">VESPER · BALANCED LATTICE · CHASE CAM</div>
     </section>
   </main>
 
@@ -128,7 +129,7 @@
   <dialog id="help-dialog" aria-labelledby="help-title">
     <button id="close-help" class="close-dialog" aria-label="Close controls">×</button>
     <div class="eyebrow">FLIGHT MANUAL / 001</div><h2 id="help-title">LESS THINKING.<br><em>MORE FLYING.</em></h2>
-    <div class="control-guide"><div><b>01 / STEER</b><p>Move your palm a little left, right, up or down. Or use WASD / arrow keys. On touchscreens, drag the world.</p></div><div><b>02 / SHOOT</b><p>Pinch thumb + index and hold. Or hold Space / click / FIRE. Your targets are THE LATTICE: fast SEEKERS (2 hits) and armoured PYLONS (3 hits). Watch weapon heat.</p></div><div><b>03 / FLOW</b><p>Fly through cyan gates to build your chain. Hold Shift / BOOST for speed. In two-hand mode, pinch the steering hand to boost.</p></div></div>
+    <div class="control-guide"><div><b>01 / STEER</b><p>Move your palm a little left, right, up or down. Or use WASD / arrow keys. On touchscreens, drag the world.</p></div><div><b>02 / SHOOT</b><p>Pinch thumb + index and hold. Or hold Space / click / FIRE. Your targets are THE LATTICE: fast SEEKERS (2 hits) and armoured PYLONS (3 hits). Watch weapon heat.</p></div><div><b>04 / LOADOUT</b><p>BUILD YOUR FLIGHT picks your pilot, which hostiles the course fields, how many, how wide, cockpit or chase camera, and the sky. A custom flight is its own course with its own ghosts.</p></div><div><b>03 / FLOW</b><p>Fly through cyan gates to build your chain. Hold Shift / BOOST for speed. In two-hand mode, pinch the steering hand to boost.</p></div></div>
     <p class="muted">Two hands: screen-left pilots, screen-right aims and fires. Roles lock during setup. Press R to recenter. If tracking disappears, firing stops and the game pauses. Support your elbows and take breaks.</p>
     <label class="check-label"><input id="reduced-motion" type="checkbox"> Reduced motion · no shake or speed streaks</label>
     <label class="check-label"><input id="show-preview" type="checkbox"> Show webcam image during flight (skeleton is always local)</label>
@@ -145,9 +146,48 @@
       <p class="briefing-foot">Waves are called out before they reach you. Clear the objective for a <b>+1000</b> bonus.</p>
     </div>
     <div class="help-footer"><button id="clear-data" class="text-button">DELETE LOCAL GHOSTS</button><span>F3 · PERFORMANCE HUD</span></div>
-    <p class="muted">Ghost races are local or file-shared replays, not live multiplayer. Scores are not server-verified. Only flight positions are saved; no camera data.</p>
+    <p class="muted"><b>Ghosts:</b> every finished flight leaves one — a win becomes your personal best, and a crash becomes your best attempt to beat. It appears automatically on your next run on the same course, and the HUD shows your gap. Only a completed run can be exported for a friend. Ghost races are local or file-shared replays, not live multiplayer. Scores are not server-verified. Only flight positions are saved; no camera data.</p>
   </dialog>
   <dialog id="share-dialog" aria-labelledby="share-title"><button id="close-share" class="close-dialog" aria-label="Close share">×</button><div class="eyebrow">SAME COURSE. YOUR FRIEND'S TURN.</div><h2 id="share-title">SEND THE<br><em>CHALLENGE.</em></h2><p>Share this course link. Export your ghost after a completed flight so a friend can race your actual run.</p><label class="tiny-label" for="share-link">COURSE LINK</label><input id="share-link" readonly><button id="copy-link" class="button primary full">COPY LINK ↗</button><p class="muted">No camera data is shared. This is an asynchronous challenge, not a live room.</p></dialog>
+  <dialog id="flight-dialog" aria-labelledby="flight-title">
+    <button id="close-flight" class="close-dialog" aria-label="Close flight builder">×</button>
+    <div class="eyebrow">LOADOUT</div>
+    <h2 id="flight-title">BUILD<br><em>YOUR FLIGHT.</em></h2>
+    <label class="tiny-label">PILOT</label>
+    <div id="pilot-grid" class="pilot-grid" role="radiogroup" aria-label="Pilot"></div>
+    <div class="flight-grid">
+      <label>HOSTILES
+        <select id="flight-mix">
+          <option value="balanced">Balanced · seekers + pylons</option>
+          <option value="seekers">Seekers only · fast, 2 hits</option>
+          <option value="pylons">Pylons only · armoured, 3 hits</option>
+        </select>
+      </label>
+      <label>VIEW
+        <select id="flight-view">
+          <option value="third">Chase cam · see your ship</option>
+          <option value="first">Cockpit · first person</option>
+        </select>
+      </label>
+      <label>THEME
+        <select id="flight-theme">
+          <option value="auto">Auto · shifts as you fly</option>
+          <option value="fracture">The Fracture</option>
+          <option value="violet">Violet Wake</option>
+          <option value="sunken">Sunken Sun</option>
+        </select>
+      </label>
+      <label>DENSITY <output id="density-out">1.0×</output>
+        <input id="flight-density" type="range" min="0.5" max="2" step="0.1" value="1">
+      </label>
+      <label>SPREAD <output id="spread-out">1.0×</output>
+        <input id="flight-spread" type="range" min="0.5" max="1.6" step="0.1" value="1">
+      </label>
+    </div>
+    <p id="flight-readout" class="muted"></p>
+    <div class="flight-actions"><button id="reset-flight" class="button secondary">RESET</button><button id="apply-flight" class="button primary">USE THIS FLIGHT ↗</button></div>
+    <p class="muted">A custom flight is its own course. Its ghosts are stored separately, so you never race a ghost flown on different settings.</p>
+  </dialog>
   <input id="ghost-file" type="file" accept="application/json,.json" hidden>
   <noscript><div class="noscript">DRIFTFALL needs JavaScript and WebGL 2. Your webcam is optional and stays off until you explicitly consent.</div></noscript>
   <script type="module" src="./src/app.js"></script>

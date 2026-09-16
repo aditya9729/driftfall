@@ -60,8 +60,10 @@ test('a hull hit reports what the HUD needs to show it',()=>{
 });
 
 test('the ruleset bump retires ghosts recorded on the old layout',()=>{
- // Courses changed shape, so a v1 ghost must be rejected, not replayed wrong.
- assert.equal(RULESET,2);
- assert.throws(()=>validateReplay({format:'driftfall-ghost',version:1,seed:'NEBULA-01',
-  mode:'race',status:'won',score:1,elapsed:1,samples:[]}),/compatible/);
+ // Courses changed shape, so an older ghost must be rejected, not replayed wrong.
+ assert.ok(RULESET>=2);
+ for(const stale of [1,RULESET-1,RULESET+1]){
+  assert.throws(()=>validateReplay({format:'driftfall-ghost',version:stale,seed:'NEBULA-01',
+   mode:'race',status:'won',score:1,elapsed:1,samples:[]}),/compatible/,`v${stale} rejected`);
+ }
 });

@@ -1,7 +1,7 @@
 // Copyright 2026 Aditya Gudal. SPDX-License-Identifier: Apache-2.0
 // Pure game rules. No DOM, camera, rendering, storage, network or wall clock.
 export const VERSION = '0.1.0';
-export const RULESET = 2;
+export const RULESET = 3;
 export const STEP = 1 / 120;
 export const COURSE_LENGTH = 2100;
 export const MODES = Object.freeze(['race', 'swarm', 'daily']);
@@ -11,6 +11,40 @@ export const ENEMY_NAMES = Object.freeze({ drone: 'SEEKER', block: 'PYLON', cell
 export const WAVE_GROUP = 4;
 // Hostile spread around the gate line.
 export const LANE_X = 7.4, LANE_Y = 4.2;
+// Pilots. VESPER's multipliers are all exactly 1, so the default pilot flies
+// identically to previous builds; the others trade real advantages off.
+export const CHARACTERS = Object.freeze({
+  vesper:  { id:'vesper',  name:'VESPER',  role:'BALANCED',  blurb:'Steady hands. No weakness, no edge.',
+             speed:1,    agility:1,    hull:1,    cool:1,    fire:1,   tint:[.55,.95,1] },
+  kite:    { id:'kite',    name:'KITE',    role:'INTERCEPT', blurb:'Faster and sharper. Thin hull.',
+             speed:1.08, agility:1.28, hull:.8,   cool:1,    fire:1,   tint:[.75,1,.55] },
+  bastion: { id:'bastion', name:'BASTION', role:'ASSAULT',   blurb:'Heavy plating, cool barrel. Turns slow.',
+             speed:.95,  agility:.86,  hull:1.25, cool:.85,  fire:1,   tint:[1,.72,.42] },
+  ember:   { id:'ember',   name:'EMBER',   role:'GUNNER',    blurb:'Rapid fire, hotter barrel, light frame.',
+             speed:1,    agility:1.05, hull:.9,   cool:1.08, fire:.78, tint:[1,.5,.62] }
+});
+export const DEFAULT_CHARACTER = 'vesper';
+export function character(id) { return CHARACTERS[id] || CHARACTERS[DEFAULT_CHARACTER]; }
+// Which hostiles a course fields, how many, and how wide they sit.
+export const MIXES = Object.freeze(['balanced', 'seekers', 'pylons']);
+export const DEFAULT_FLIGHT = Object.freeze({ mix: 'balanced', density: 1, spread: 1 });
+export function cleanFlight(flight = {}) {
+  return {
+    mix: MIXES.includes(flight?.mix) ? flight.mix : 'balanced',
+    density: clamp(Math.round(finite(Number(flight?.density), 1) * 10) / 10, .5, 2),
+    spread: clamp(Math.round(finite(Number(flight?.spread), 1) * 10) / 10, .5, 1.6)
+  };
+}
+export function isDefaultFlight(flight) {
+  const f = cleanFlight(flight);
+  return f.mix === 'balanced' && f.density === 1 && f.spread === 1;
+}
+// A short stable tag so a customised course keys its own ghosts and shares cleanly.
+export function flightTag(flight, characterId) {
+  const f = cleanFlight(flight), c = character(characterId).id;
+  return isDefaultFlight(f) && c === DEFAULT_CHARACTER
+    ? 'STD' : hash(`${f.mix}:${f.density}:${f.spread}:${c}`).toString(36).toUpperCase().slice(0, 5);
+}
 export const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 export const lerp = (a, b, t) => a + (b - a) * t;
 export const finite = (n, fallback = 0) => Number.isFinite(n) ? n : fallback;
@@ -37,7 +71,8 @@ export function dailySeed(date = new Date()) {
 export function emptyInput() {
   return { x: 0, y: 0, target: false, fire: false, boost: false, aimX: 0, aimY: 0, aimActive: false };
 }
-export function course(seed, mode = 'race') {
+export function course(seed, mode = 'race', flight = DEFAULT_FLIGHT) {
+  const f = cleanFlight(flight);
   const rng = random(cleanSeed(seed));
   const length = mode === 'swarm' ? 4800 : COURSE_LENGTH;
   const gates = [], entities = [];
@@ -49,13 +84,17 @@ export function course(seed, mode = 'race') {
     // Early flight teaches gates before introducing hazards.
     if (i < 2) continue;
     const wave = Math.floor((i - 2) / WAVE_GROUP);
-    const count = mode === 'swarm' ? 4 : (i % 3 === 0 ? 3 : 2);
+    const base = mode === 'swarm' ? 4 : (i % 3 === 0 ? 3 : 2);
+    const count = clamp(Math.round(base * f.density), 1, 9);
     for (let j = 0; j < count; j++) {
-      const type = (j === 0 || rng() < .4) ? 'drone' : 'block';
+      // A single-type mix draws no rng for the type, which is a different course
+      // than 'balanced' - and that is exactly what picking a mix is asking for.
+      const type = f.mix === 'seekers' ? 'drone' : f.mix === 'pylons' ? 'block'
+        : (j === 0 || rng() < .4) ? 'drone' : 'block';
       // Hostiles sit near the gate line, not scattered to the periphery: a lane
       // you must actually shoot or dodge through. Same rng draws, tighter spread.
-      const ex = clamp(x + (rng() - .5) * LANE_X, -8.1, 8.1);
-      const ey = clamp(y + (rng() - .5) * LANE_Y, -3.8, 3.8);
+      const ex = clamp(x + (rng() - .5) * LANE_X * f.spread, -8.1, 8.1);
+      const ey = clamp(y + (rng() - .5) * LANE_Y * f.spread, -3.8, 3.8);
       entities.push({ id: id++, type, wave, x: ex, y: ey, z: z + 17 + j * 5,
         size: type === 'drone' ? .8 : 1.15, hp: type === 'drone' ? 2 : 3,
         dead: false, collided: false });
@@ -79,7 +118,7 @@ export function course(seed, mode = 'race') {
   // Reachable in a decent run, so the reward actually lands; capped for swarm's
   // much denser course.
   const objectiveTarget = Math.min(40, Math.max(3, Math.round(hostileTotal * .3)));
-  return { length, gates, entities, waves, hostileTotal, objectiveTarget };
+  return { length, gates, entities, waves, hostileTotal, objectiveTarget, flight: f };
 }
 // Slab-based segment/AABB intersection catches fast shots and thin blocks.
 export function segmentBox(a, b, center, half) {
@@ -99,12 +138,16 @@ export function segmentBox(a, b, center, half) {
   return tmin;
 }
 export class Run {
-  constructor({ seed = 'NEBULA-01', mode = 'race' } = {}) {
+  constructor({ seed = 'NEBULA-01', mode = 'race', flight = DEFAULT_FLIGHT, character: pilot = DEFAULT_CHARACTER } = {}) {
     this.seed = cleanSeed(seed); this.mode = MODES.includes(mode) ? mode : 'race';
-    Object.assign(this, course(this.seed, this.mode));
+    this.pilot = character(pilot); this.character = this.pilot.id;
+    Object.assign(this, course(this.seed, this.mode, flight));
+    this.tag = flightTag(this.flight, this.character);
     this.player = { x: 0, y: 0, vx: 0, vy: 0 };
     this.distance = 0; this.elapsed = 0; this.speed = 0;
-    this.health = 100; this.energy = 100; this.heat = 0; this.overheated = false;
+    // Hull scales with the pilot; the HUD reads a percentage of maxHealth.
+    this.maxHealth = Math.round(100 * this.pilot.hull);
+    this.health = this.maxHealth; this.energy = 100; this.heat = 0; this.overheated = false;
     this.score = 0; this.combo = 0; this.bestCombo = 0; this.gateCount = 0;
     this.kills = 0; this.shots = 0; this.hitCount = 0; this.perfects = 0;
     this.bullets = []; this.events = []; this.samples = [];
@@ -128,15 +171,16 @@ export class Run {
     const input = { ...emptyInput(), ...raw };
     input.x = clamp(finite(input.x), -1, 1); input.y = clamp(finite(input.y), -1, 1);
     const p = this.player, old = { x: p.x, y: p.y, z: this.distance };
-    const vx = input.target ? clamp((input.x * 8 - p.x) * 5, -13, 13) : input.x * 11;
-    const vy = input.target ? clamp((input.y * 4 - p.y) * 5, -9, 9) : input.y * 8;
+    const ag = this.pilot.agility;
+    const vx = input.target ? clamp((input.x * 8 - p.x) * 5 * ag, -13 * ag, 13 * ag) : input.x * 11 * ag;
+    const vy = input.target ? clamp((input.y * 4 - p.y) * 5 * ag, -9 * ag, 9 * ag) : input.y * 8 * ag;
     p.vx = lerp(p.vx, vx, 1 - Math.exp(-12 * dt));
     p.vy = lerp(p.vy, vy, 1 - Math.exp(-12 * dt));
     p.x = clamp(p.x + p.vx * dt, -8, 8); p.y = clamp(p.y + p.vy * dt, -4, 4);
     // A tiny residual energy is insufficient to stutter-boost every frame.
     this.boosting = Boolean(input.boost && this.energy >= (this.boosting ? .5 : 12));
     this.energy = clamp(this.energy + (this.boosting ? -29 : 13) * dt, 0, 100);
-    this.speed = lerp(this.speed, this.boosting ? 48 : 28, 1 - Math.exp(-2.7 * dt));
+    this.speed = lerp(this.speed, (this.boosting ? 48 : 28) * this.pilot.speed, 1 - Math.exp(-2.7 * dt));
     this.distance += this.speed * dt;
     // Announce each hostile wave exactly once, before it is in weapons range.
     // A loop, not an if: a boosting run can cross more than one marker per step.
@@ -166,7 +210,8 @@ export class Run {
         slopeY = (assisted.y - p.y) / (assisted.z - this.distance);
       }
       this.bullets.push({ x: p.x, y: p.y, z: this.distance + 1, sx: slopeX, sy: slopeY, life: 1.35 });
-      this.shots++; this.cooldown = .13; this.heat = Math.min(1, this.heat + .087);
+      this.shots++; this.cooldown = .13 * this.pilot.fire;
+      this.heat = Math.min(1, this.heat + .087 * this.pilot.cool);
       if (this.heat >= .999) { this.overheated = true; this.emit('overheat'); }
       this.emit('shot');
     }
@@ -200,7 +245,7 @@ export class Run {
       if (segmentBox(old, now, e, e.size + .48) !== null) {
         e.collided = true; e.dead = true;
         if (e.type === 'cell') {
-          this.health = Math.min(100, this.health + 15); this.energy = Math.min(100, this.energy + 25);
+          this.health = Math.min(this.maxHealth, this.health + 15); this.energy = Math.min(100, this.energy + 25);
           this.score += 75; this.emit('cell', { x: e.x, y: e.y, z: e.z });
         } else this.damage(20, e);
       }

@@ -46,3 +46,26 @@ html[data-renderer="Canvas2D compatibility"] dialog::backdrop{backdrop-filter:no
 /* Mobile deck is already tight: drop the briefing, keep the in-flight objective. */
 @media(max-width:600px){.codex{grid-template-columns:1fr}.objective{top:136px;left:6%;width:150px}.objective strong{font-size:9px;letter-spacing:.7px}.objective .tiny-label{margin-bottom:4px}}
 @media(max-height:680px) and (max-width:600px){.objective{display:none}}
+
+/* ---- Loadout and flight builder ---- */
+.loadout-summary{margin-top:10px;font:600 11px/1.5 var(--mono,ui-monospace,monospace);letter-spacing:.14em;color:var(--lime);opacity:.85}
+.pilot-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:6px 0 16px}
+.pilot{display:flex;flex-direction:column;gap:2px;text-align:left;padding:10px 12px;cursor:pointer;
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.14);border-radius:10px;color:inherit}
+.pilot strong{font-size:13px;letter-spacing:.12em}
+.pilot small{font:600 9px/1.4 var(--mono,ui-monospace,monospace);letter-spacing:.18em;color:var(--lime);opacity:.8}
+.pilot span{font-size:11px;line-height:1.45;opacity:.65}
+.pilot:hover{border-color:rgba(255,255,255,.3)}
+.pilot.selected{border-color:var(--lime);background:rgba(160,230,110,.1)}
+.pilot.selected small{opacity:1}
+.flight-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.flight-grid label{display:flex;flex-direction:column;gap:5px;font:600 10px/1.4 var(--mono,ui-monospace,monospace);letter-spacing:.16em;opacity:.8}
+.flight-grid select,.flight-grid input[type=range]{width:100%}
+.flight-grid output{font-weight:700;color:var(--lime);letter-spacing:.1em}
+#flight-readout{margin:14px 0 4px;font:600 11px/1.6 var(--mono,ui-monospace,monospace);letter-spacing:.06em}
+.flight-actions{display:flex;gap:10px;margin:14px 0 10px}
+.flight-actions .button{flex:1}
+@media (max-width:620px){
+  .pilot-grid,.flight-grid{grid-template-columns:1fr}
+  .flight-actions{flex-direction:column}
+}
