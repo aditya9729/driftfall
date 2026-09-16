@@ -1,7 +1,7 @@
 // Copyright 2026 Aditya Gudal. SPDX-License-Identifier: Apache-2.0
 // Pure game rules. No DOM, camera, rendering, storage, network or wall clock.
 export const VERSION = '0.1.0';
-export const RULESET = 1;
+export const RULESET = 2;
 export const STEP = 1 / 120;
 export const COURSE_LENGTH = 2100;
 export const MODES = Object.freeze(['race', 'swarm', 'daily']);
@@ -9,6 +9,8 @@ export const MODES = Object.freeze(['race', 'swarm', 'daily']);
 export const ENEMY_NAMES = Object.freeze({ drone: 'SEEKER', block: 'PYLON', cell: 'CELL' });
 // Hostiles are announced in groups of this many gate clusters.
 export const WAVE_GROUP = 4;
+// Hostile spread around the gate line.
+export const LANE_X = 7.4, LANE_Y = 4.2;
 export const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 export const lerp = (a, b, t) => a + (b - a) * t;
 export const finite = (n, fallback = 0) => Number.isFinite(n) ? n : fallback;
@@ -50,8 +52,10 @@ export function course(seed, mode = 'race') {
     const count = mode === 'swarm' ? 4 : (i % 3 === 0 ? 3 : 2);
     for (let j = 0; j < count; j++) {
       const type = (j === 0 || rng() < .4) ? 'drone' : 'block';
-      const ex = clamp(x + (rng() - .5) * 11, -8.1, 8.1);
-      const ey = clamp(y + (rng() - .5) * 5.5, -3.8, 3.8);
+      // Hostiles sit near the gate line, not scattered to the periphery: a lane
+      // you must actually shoot or dodge through. Same rng draws, tighter spread.
+      const ex = clamp(x + (rng() - .5) * LANE_X, -8.1, 8.1);
+      const ey = clamp(y + (rng() - .5) * LANE_Y, -3.8, 3.8);
       entities.push({ id: id++, type, wave, x: ex, y: ey, z: z + 17 + j * 5,
         size: type === 'drone' ? .8 : 1.15, hp: type === 'drone' ? 2 : 3,
         dead: false, collided: false });
@@ -113,7 +117,8 @@ export class Run {
     if (this.invulnerable > 0) return;
     this.health = Math.max(0, this.health - amount); this.invulnerable = 1.1;
     this.combo = 0;
-    this.emit('damage', { x: this.player.x, y: this.player.y, z: this.distance, id: entity?.id });
+    this.emit('damage', { x: this.player.x, y: this.player.y, z: this.distance, id: entity?.id,
+      amount, kind: entity?.type || null });
   }
   step(raw = emptyInput(), dt = STEP) {
     if (this.status !== 'running') return;

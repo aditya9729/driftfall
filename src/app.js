@@ -17,6 +17,8 @@ let mode='race',state='menu',inputMode='keyboard',lastInputMode='keyboard';
 let run=new Run(),ghost=null,importedGhost=null,lastReplay=null;
 let mapper=new HandMapper(),inferenceMs=0;
 let countdown=3,accumulator=0,lastTime=0,calloutUntil=0,lastHud=0,toastTimer=0;
+// Seconds a hand must stay steady before the run starts by itself.
+const STEADY_LAUNCH=1.4;let steadySince=0;
 let lastSceneDraw=0;
 let helpWasPlaying=false,reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
 let activeInput=emptyInput();
@@ -94,7 +96,14 @@ const camera=new CameraSession({video:$('camera-video'),
     inferenceMs=result.inferenceMs||0;mapper.ingest(result,result.timestamp??now);drawHands(result);
     if($('camera-dialog').open){
       const ready=mapper.canCalibrate(now);$('calibrate').disabled=!ready;
-      $('calibration-message').textContent=ready?'Hand signal steady. This will be your neutral position.':mapper.mode==='two'?'Keep both hands in view and comfortably still.':'Keep one hand in view and comfortably still.';
+      // Reaching for the button is what breaks the pose, so a steady hand
+      // launches on its own. The button stays for anyone who wants it.
+      if(!ready)steadySince=0;else if(!steadySince)steadySince=now;
+      const held=steadySince?(now-steadySince)/1000:0;
+      if(ready&&held>=STEADY_LAUNCH){launchHands();return;}
+      $('calibration-message').textContent=ready
+        ?`Hand signal steady. Launching in ${Math.max(1,Math.ceil(STEADY_LAUNCH-held))}… hold still.`
+        :mapper.mode==='two'?'Keep both hands in view and comfortably still.':'Keep one hand in view and comfortably still.';
     }
   },
   onError(error){
@@ -128,19 +137,25 @@ async function allowCamera(){
   $('calibration-tip').textContent=mapper.mode==='two'?'Rest your elbows. Screen-left hand pilots; screen-right hand aims. Hold both still and calibrate. Roles stay locked even if your hands cross.':'Rest your elbows. Hold one hand comfortably in view, keep it still, then calibrate. Small movements are enough.';
   try{await camera.start({consent:true});}catch(error){$('camera-error').textContent=cameraMessage(error);}
 }
-function cancelSetup(){camera.stop();$('camera-dialog').close();$('camera-consent').checked=false;}
+function cancelSetup(){steadySince=0;camera.stop();$('camera-dialog').close();$('camera-consent').checked=false;}
 $('play-hands').onclick=setupCamera;
 $('play-keyboard').onclick=()=>{camera.stop();begin('keyboard');};
 $('camera-consent').onchange=()=>{$('allow-camera').disabled=!$('camera-consent').checked;};
+// The swap-roles control only means anything in two-hand mode.
+const syncHandMode=()=>{$('swap-hands-label').hidden=$('hand-mode').value!=='two';};
+$('hand-mode').onchange=syncHandMode;syncHandMode();
 $('allow-camera').onclick=allowCamera;$('cancel-camera').onclick=cancelSetup;
 $('camera-dialog').addEventListener('cancel',event=>{event.preventDefault();cancelSetup();});
 for(const id of ['camera-fallback','calibration-fallback'])$(id).onclick=()=>{cancelSetup();begin('keyboard');};
-$('calibrate').onclick=()=>{
-  if(!mapper.calibrate(performance.now()))return;
+function launchHands(){
+  if(!mapper.calibrate(performance.now()))return false;
+  steadySince=0;
   $('camera-dialog').close();$('camera-consent').checked=false;
   $('live-preview').append($('tracking-preview'));$('live-preview').hidden=false;
   begin('hands');
-};
+  return true;
+}
+$('calibrate').onclick=launchHands;
 $('stop-camera').onclick=stopCameraWithFallback;$('pause-stop-camera').onclick=stopCameraWithFallback;
 $('pause-button').onclick=()=>pause();$('resume').onclick=resume;
 $('pause-keyboard').onclick=()=>{stopCameraWithFallback();resume();};
@@ -308,6 +323,10 @@ function frame(now){
     for(const e of events){
       if(e.type==='gate'){$('callout').textContent=e.perfect?`PERFECT LINE · ×${e.combo}`:`GATE CHAIN · ×${e.combo}`;calloutUntil=now+1000;}
       if(e.type==='overheat'){$('callout').textContent='COOLING DOWN';calloutUntil=now+1100;}
+      if(e.type==='damage'){
+        $('callout').textContent=`✖ HULL HIT · -${e.amount} · ${Math.max(0,Math.round(run.health))}% HULL`;
+        $('callout').classList.add('warn');calloutUntil=now+900;
+      }
       if(e.type==='wave'){
         const parts=[];
         if(e.seekers)parts.push(`${e.seekers} SEEKER${e.seekers>1?'S':''}`);
