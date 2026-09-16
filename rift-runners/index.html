@@ -89,7 +89,7 @@
     <div id="consent-step">
       <p>Your webcam becomes the controller. <strong>Video stays in your browser.</strong> No recording, uploads, accounts, or microphone access.</p>
       <p class="muted">After you agree, we download Google's hand-tracking model and MediaPipe runtime from Google and jsDelivr. These providers receive normal network data, such as your IP address—not your camera frames.</p>
-      <div class="setup-options"><label>CONTROL STYLE<select id="hand-mode"><option value="one">One hand · steer + pinch to fire</option><option value="two">Two hands · pilot + gunner</option></select></label><label class="check-label"><input type="checkbox" id="swap-hands"> Swap two-hand roles</label></div>
+      <div class="setup-options"><label>CONTROL STYLE<select id="hand-mode"><option value="one">One hand · steer + pinch to fire</option><option value="two">Two hands · pilot + gunner (advanced)</option></select></label><label class="check-label" id="swap-hands-label" hidden><input type="checkbox" id="swap-hands"> Swap two-hand roles</label></div>
       <label class="consent-check"><input id="camera-consent" type="checkbox"> <span>I agree to use my webcam for local hand tracking this session. I can stop it at any time.</span></label>
       <button id="allow-camera" class="button primary full" disabled>ALLOW CAMERA & CONTINUE <span>→</span></button>
       <button id="camera-fallback" class="text-button full">PLAY WITHOUT A CAMERA INSTEAD</button>

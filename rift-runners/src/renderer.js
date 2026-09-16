@@ -257,16 +257,26 @@ export class Renderer {
       for(const e of run.entities){
         const z=distance-e.z;
         if(e.dead||z>9||z< -230)continue;
+        // Hostiles must read against a near-black sky through fog, so their hulls
+        // are emissive and each wears a bracket while it is still far enough to
+        // answer. Four boxes, not a ring: the instance budget feeds the ship too.
+        const bracket=(c,r)=>{
+          const p=Math.max(.35,1-(-z)/230)*.9;
+          this.box(e.x-r,e.y,z,.13,r*1.1,.12,c,p);this.box(e.x+r,e.y,z,.13,r*1.1,.12,c,p);
+          this.box(e.x,e.y-r,z,r*1.1,.13,.12,c,p);this.box(e.x,e.y+r,z,r*1.1,.13,.12,c,p);
+        };
         if(e.type==='drone'){
           // The central hull matches the simulation collision box; fins are decorative.
-          this.box(e.x,e.y,z,e.size*2,e.size*2,e.size*2,[.25,.15,.18],0,0,0);
-          this.box(e.x,e.y,z+.82,.83,.24,.06,[1,.29,.23],1.2);
-          this.box(e.x-1.1,e.y,z,.52,.19,.85,[.51,.39,.32]);
-          this.box(e.x+1.1,e.y,z,.52,.19,.85,[.51,.39,.32]);
+          this.box(e.x,e.y,z,e.size*2,e.size*2,e.size*2,[.93,.31,.26],.75,time*.7);
+          this.box(e.x,e.y,z+.86,.95,.28,.07,[1,.86,.52],2.4);
+          this.box(e.x-1.12,e.y,z,.56,.21,.88,[1,.52,.3],.9,time*.7);
+          this.box(e.x+1.12,e.y,z,.56,.21,.88,[1,.52,.3],.9,-time*.7);
+          bracket([1,.42,.3],e.size*2.2);
         }else if(e.type==='block'){
-          this.box(e.x,e.y,z,e.size*2,e.size*2,e.size*2,[.31,.31,.24]);
-          this.box(e.x,e.y,z+e.size+.01,1.8,.09,.06,[.95,.67,.29],.7);
-          this.box(e.x,e.y,z+e.size+.04,.09,1.8,.06,[.95,.67,.29],.7);
+          this.box(e.x,e.y,z,e.size*2,e.size*2,e.size*2,[.66,.68,.52],.45);
+          this.box(e.x,e.y,z+e.size+.01,2,.13,.07,[1,.77,.33],1.9);
+          this.box(e.x,e.y,z+e.size+.04,.13,2,.07,[1,.77,.33],1.9);
+          bracket([1,.73,.36],e.size*1.9);
         }else{
           this.box(e.x,e.y,z,.65,.65,.65,[.65,1,.52],1,Math.PI/4,time);
           this.ring(e.x,e.y,z,.92,[.65,1,.52],time);
