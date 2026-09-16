@@ -41,9 +41,17 @@ async function throttleKey(request, salt) {
 
 export default {
   async fetch(request, env) {
-    const allowed = env.ALLOWED_ORIGIN || '';
-    const origin = request.headers.get('Origin') === allowed ? allowed : '';
     const url = new URL(request.url);
+    const allowed = env.ALLOWED_ORIGIN || '';
+    const sent = request.headers.get('Origin');
+    // Same-origin requests either send our own origin or none at all. A
+    // cross-origin writer is only ever honoured if it matches ALLOWED_ORIGIN.
+    const sameOrigin = !sent || sent === url.origin;
+    const origin = sent && (sent === allowed || sent === url.origin) ? sent : '';
+
+    // Mounted at /api on the game's own origin (same-origin, so CORS is moot),
+    // and also servable at the root as a standalone Worker.
+    const path = url.pathname.replace(/^\/api(?=\/|$)/, '') || '/';
 
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: {
@@ -56,11 +64,11 @@ export default {
     }
 
     try {
-      if (request.method === 'GET' && url.pathname === '/board') return await board(url, env, origin);
-      if (request.method === 'GET' && url.pathname === '/ghost') return await ghost(url, env, origin);
-      if (request.method === 'POST' && url.pathname === '/submit') {
+      if (request.method === 'GET' && path === '/board') return await board(url, env, origin);
+      if (request.method === 'GET' && path === '/ghost') return await ghost(url, env, origin);
+      if (request.method === 'POST' && path === '/submit') {
         // Only the game's own origin may write.
-        if (!origin) return json({ error: 'Submissions are only accepted from the game.' }, 403, '');
+        if (!origin && !sameOrigin) return json({ error: 'Submissions are only accepted from the game.' }, 403, '');
         return await submit(request, env, origin);
       }
       return json({ error: 'Not found.' }, 404, origin);

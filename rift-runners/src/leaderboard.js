@@ -3,11 +3,11 @@
 // a network problem must never disturb a flight.
 import { cleanFlight, flightTag, character, cleanSeed } from './core.js';
 
-// Set to the deployed Worker origin, e.g.
-//   'https://driftfall-board.<subdomain>.workers.dev'
-// The SAME origin must also be added to connect-src in index.html's CSP, or the
-// browser blocks the request. Empty means the board is simply not configured.
-export const ENDPOINT = '';
+// The API is served from the game's OWN origin at /api (a Pages Function
+// wrapping the same worker), so there is no cross-origin request to make, no
+// CORS to grant, and nothing to add to connect-src: 'self' already covers it.
+// A build served from somewhere without that function simply has no board.
+export const ENDPOINT = '/api';
 const TIMEOUT_MS = 6000;
 
 export const available = () => Boolean(ENDPOINT);

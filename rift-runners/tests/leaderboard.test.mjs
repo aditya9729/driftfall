@@ -138,8 +138,43 @@ test('the board reports what it verified, and keeps builds apart',async()=>{
  assert.equal((await other.json()).entries.length,0);
 });
 
-test('the client is inert until an endpoint is configured',async()=>{
- // An unconfigured build must degrade quietly, never throw into the game loop.
- assert.equal(client.available(),false);
- await assert.rejects(()=>client.board('NEBULA-01','race'),/not configured/);
+test('the client calls its own origin, so no CSP grant is needed',async()=>{
+ // Same-origin by construction: a relative endpoint cannot reach a third party
+ // even if someone later edits it carelessly.
+ assert.equal(client.available(),true);
+ assert.ok(client.ENDPOINT.startsWith('/'),'the endpoint is relative');
+ assert.ok(!/^https?:/i.test(client.ENDPOINT),'never an absolute third-party origin');
+});
+
+test('the same worker serves at the root and mounted under /api',async()=>{
+ // It runs as a standalone Worker and as a same-origin Pages Function.
+ for(const base of ['https://board.test','https://driftfall.world/api']){
+  const db=fakeDB();
+  const res=await worker.fetch(new Request(`${base}/submit`,
+   {method:'POST',headers:{'Content-Type':'application/json','Origin':ORIGIN,'CF-Connecting-IP':'203.0.113.9'},
+    body:JSON.stringify({name:'a',ghost:won})}),env(db));
+  assert.equal(res.status,201,`${base} accepts a submission`);
+  const shown=await worker.fetch(new Request(`${base}/board?seed=${won.seed}&mode=race`,
+   {headers:{Origin:ORIGIN}}),env(db));
+  assert.equal((await shown.json()).entries.length,1,`${base} serves the board`);
+ }
+});
+
+test('a same-origin submission is accepted without an Origin header',async()=>{
+ // Browsers omit Origin on some same-origin requests; that must not read as
+ // a hostile cross-origin write.
+ const db=fakeDB();
+ const res=await worker.fetch(new Request('https://driftfall.world/api/submit',
+  {method:'POST',headers:{'Content-Type':'application/json','CF-Connecting-IP':'203.0.113.9'},
+   body:JSON.stringify({name:'a',ghost:won})}),env(db));
+ assert.equal(res.status,201);
+});
+
+test('a foreign origin is still refused on the mounted path',async()=>{
+ const db=fakeDB();
+ const res=await worker.fetch(new Request('https://driftfall.world/api/submit',
+  {method:'POST',headers:{'Content-Type':'application/json','Origin':'https://evil.example','CF-Connecting-IP':'203.0.113.9'},
+   body:JSON.stringify({name:'x',ghost:won})}),env(db));
+ assert.equal(res.status,403);
+ assert.equal(db._rows.length,0);
 });

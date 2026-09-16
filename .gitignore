@@ -24,3 +24,8 @@ src/shaders/generated/
 .vscode/
 .idea/
 .DS_Store
+
+# Wrangler local state and Pages build output (never commit: local caches, and
+# .wrangler can hold account state).
+.wrangler/
+rift-runners/build/
